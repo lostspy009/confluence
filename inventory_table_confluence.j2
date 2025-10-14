@@ -1,159 +1,207 @@
-{# inventory_table_confluence.j2 — Bright green/red color version, role alignment fixed #}
-<h1 style="margin-bottom:6px; text-align:center;">
-  {{ (group_name | replace('_',' ') | title) if group_name is defined else 'All Servers' }} Inventory Report
-</h1>
-<p style="font-size:12px; color:#555; margin-top:0; text-align:center;">
-  Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}
-</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AAP Inventory Report</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      margin: 0;
+      padding: 0;
+    }
 
-<table style="width:100%; border-collapse:collapse; font-size:13px; text-align:center;">
-  <colgroup>
-    <col style="width:13%;">
-    <col style="width:12%;">
-    <col style="width:15%;">
-    <col style="width:11%;">
-    <col style="width:9%;">
-    <col style="width:8%;">
-    <col style="width:8%;">
-    <col style="width:10%;">
-    <col style="width:10%;">
-    <col style="width:6%;">
-  </colgroup>
-  <tbody>
-    <tr style="background-color:#f4f5f7;">
-      <th style="padding:8px;">Hostname</th>
-      <th style="padding:8px;">IP Address</th>
-      <th style="padding:8px;">OS Version</th>
-      <th style="padding:8px;">Kernel</th>
-      <th style="padding:8px;">Root Disk</th>
-      <th style="padding:8px;">/var</th>
-      <th style="padding:8px;">/boot</th>
-      <th style="padding:8px;">DB Services</th>
-      <th style="padding:8px;">Role</th>
-      <th style="padding:8px;">Status</th>
-    </tr>
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
 
-{% set host_list = groups.get(group_name, []) %}
-{% set total = host_list | length %}
-{% set live_hosts = 0 %}
-{% set db_count = 0 %}
+    header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
 
-{% if host_list | length == 0 %}
-  <tr><td colspan="10" style="padding:10px; text-align:center;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
-{% else %}
-{% for host in host_list %}
-  {% set facts = hostvars.get(host, {}) %}
+    header h1 {
+      font-size: 2rem;
+      margin: 0;
+      color: #0b3d91;
+    }
 
-  {# Reachability check #}
-  {% set af = facts.get('ansible_facts') %}
-  {% set ah = facts.get('ansible_hostname') %}
-  {% set afq = facts.get('ansible_fqdn') %}
-  {% set aip = facts.get('ansible_default_ipv4', {}).get('address') %}
-  {% set reachable = (
-       (af is mapping and af|length > 0) or
-       (ah is defined and (ah|string).strip() != '') or
-       (afq is defined and (afq|string).strip() != '') or
-       (aip is defined and (aip|string).strip() != '')
-     ) %}
+    header p {
+      margin: 0.5rem 0 0;
+      color: #475569;
+      font-size: 0.95rem;
+    }
 
-  {% if reachable %}
-    {% set live_hosts = live_hosts + 1 %}
-  {% endif %}
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      background: #ffffff;
+      box-shadow: 0 6px 20px -8px rgba(0, 0, 0, 0.15);
+      border-radius: 12px;
+      overflow: hidden;
+    }
 
-  {% set mounts = facts.get('ansible_mounts', []) %}
-  {% set root_list = mounts | selectattr('mount', 'equalto', '/') | list %}
-  {% set var_list  = mounts | selectattr('mount', 'equalto', '/var') | list %}
-  {% set boot_list = mounts | selectattr('mount', 'equalto', '/boot') | list %}
-  {% set root_mount = root_list[0] if root_list | length > 0 else {} %}
-  {% set var_mount  = var_list[0]  if var_list | length > 0  else {} %}
-  {% set boot_mount = boot_list[0] if boot_list | length > 0 else {} %}
+    th, td {
+      padding: 10px 12px;
+      text-align: center;
+      vertical-align: top;
+    }
 
-  {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
-  {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) if boot_mount and boot_mount.get('size_available') else 0 %}
+    th {
+      background-color: #f1f5f9;
+      font-weight: 600;
+      color: #334155;
+    }
 
-  {# Bright vivid colors for clarity #}
-  {% set var_bg = '#22c55e' if var_free_gb >= 1 else '#ef4444' %}
-  {% set boot_bg = '#22c55e' if boot_free_mb >= 100 else '#ef4444' %}
-  {% set text_color = '#ffffff' %}
+    tr:nth-child(even) {
+      background-color: #f9fafb;
+    }
 
-  {% set services = facts.get('services', {}) %}
-  {% set db_keywords = ['mysql','mariadb','postgres','oracle','mongodb','redis','sql'] %}
-  {% set db_services = [] %}
-  {% if services is mapping %}
-    {% for svc, info in services.items() %}
-      {% if info is mapping and info.get('state') and 'running' in (info.get('state')|string) %}
-        {% for keyword in db_keywords %}
-          {% if keyword in svc and svc not in db_services %}
-            {% set _ = db_services.append(svc) %}
-          {% endif %}
-        {% endfor %}
-      {% endif %}
-    {% endfor %}
-  {% endif %}
-  {% set is_db_server = db_services | length > 0 %}
-  {% if is_db_server %}
-    {% set db_count = db_count + 1 %}
-  {% endif %}
+    .status-ok {
+      background: rgba(34, 197, 94, 0.2);
+      color: #166534;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-weight: 600;
+      display: inline-block;
+      min-width: 70px;
+    }
 
-  <tr style="border-bottom:1px solid #e2e8f0; height:46px;">
-    <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_hostname', host) }}</td>
-    <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
-    <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
-    <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
+    .status-critical {
+      background: rgba(239, 68, 68, 0.2);
+      color: #b91c1c;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-weight: 600;
+      display: inline-block;
+      min-width: 70px;
+    }
 
-    <td style="padding:6px 8px; vertical-align:top;">
-      {% if root_mount and root_mount.get('size_total') %}
-        {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
-      {% else %}
-        N/A
-      {% endif %}
-    </td>
+    .role {
+      text-align: left;
+      vertical-align: top;
+      font-weight: 600;
+      padding-left: 8px;
+    }
 
-    <td style="padding:6px 8px; vertical-align:top;">
-      <div style="display:inline-block; min-width:70px; background-color:{{ var_bg }};
-                  color:{{ text_color }}; padding:4px 8px; border-radius:8px; font-weight:600;">
-        {{ var_free_gb | round(2) }} GB
-      </div>
-    </td>
+    .summary {
+      margin-top: 1rem;
+      font-size: 14px;
+      color: #334155;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>{{ (group_name | replace('_',' ') | title) if group_name is defined else 'AAP Inventory Report' }}</h1>
+      <p>Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
+    </header>
 
-    <td style="padding:6px 8px; vertical-align:top;">
-      <div style="display:inline-block; min-width:70px; background-color:{{ boot_bg }};
-                  color:{{ text_color }}; padding:4px 8px; border-radius:8px; font-weight:600;">
-        {{ boot_free_mb | round(1) }} MB
-      </div>
-    </td>
+    <table>
+      <thead>
+        <tr>
+          <th>Hostname</th>
+          <th>IP Address</th>
+          <th>OS Version</th>
+          <th>Kernel</th>
+          <th>Root Disk</th>
+          <th>/var</th>
+          <th>/boot</th>
+          <th>DB Services</th>
+          <th>Role</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set host_list = groups.get(group_name, []) %}
+        {% set total = host_list | length %}
+        {% set live_hosts = 0 %}
+        {% set db_count = 0 %}
 
-    <td style="padding:6px 8px; vertical-align:top;">
-      {% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}
-    </td>
+        {% if host_list | length == 0 %}
+          <tr><td colspan="10"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
+        {% else %}
+          {% for host in host_list %}
+            {% set facts = hostvars.get(host, {}) %}
+            {% set reachable = (
+                 (facts.get('ansible_hostname')) or
+                 (facts.get('ansible_fqdn')) or
+                 (facts.get('ansible_default_ipv4', {}).get('address'))
+               ) %}
+            {% if reachable %}
+              {% set live_hosts = live_hosts + 1 %}
+            {% endif %}
 
-    <td style="padding:6px 8px; vertical-align:top; font-weight:600; text-align:center;">
-      {% if is_db_server %}
-        <div style="margin:0;">Database Server</div>
-      {% else %}
-        <div style="margin:0;">Application Server</div>
-      {% endif %}
-    </td>
+            {% set mounts = facts.get('ansible_mounts', []) %}
+            {% set root = (mounts | selectattr('mount', 'equalto', '/') | list | first) %}
+            {% set var = (mounts | selectattr('mount', 'equalto', '/var') | list | first) %}
+            {% set boot = (mounts | selectattr('mount', 'equalto', '/boot') | list | first) %}
+            {% set var_free_gb = (var.size_available / 1024 / 1024 / 1024) if var and var.get('size_available') else 0 %}
+            {% set boot_free_mb = (boot.size_available / 1024 / 1024) if boot and boot.get('size_available') else 0 %}
+            {% set var_class = 'status-ok' if var_free_gb >= 1 else 'status-critical' %}
+            {% set boot_class = 'status-ok' if boot_free_mb >= 100 else 'status-critical' %}
 
-    <td style="padding:6px 8px; vertical-align:top; font-weight:600;">
-      {% if reachable %}
-        <span style="color:#16a34a;">✅ Live</span>
-      {% else %}
-        <span style="color:#dc2626;">❌ Unreachable</span>
-      {% endif %}
-    </td>
-  </tr>
-{% endfor %}
-{% endif %}
-  </tbody>
-</table>
+            {% set services = facts.get('services', {}) %}
+            {% set db_keywords = ['mysql','mariadb','postgres','oracle','mongodb','redis','sql'] %}
+            {% set db_services = [] %}
+            {% if services is mapping %}
+              {% for svc, info in services.items() %}
+                {% if info is mapping and info.get('state') and 'running' in info.get('state') %}
+                  {% for k in db_keywords %}
+                    {% if k in svc and svc not in db_services %}
+                      {% set _ = db_services.append(svc) %}
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+            {% set is_db_server = db_services | length > 0 %}
+            {% if is_db_server %}{% set db_count = db_count + 1 %}{% endif %}
 
-{% set unreachable = total - live_hosts %}
+            <tr>
+              <td>{{ facts.get('ansible_hostname', host) }}</td>
+              <td>{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
+              <td>{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
+              <td>{{ facts.get('ansible_kernel', 'N/A') }}</td>
+              <td>
+                {% if root and root.get('size_total') %}
+                  {{ (root.size_total / 1024 / 1024 / 1024) | round(1) }} GB
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+              <td><span class="{{ var_class }}">{{ var_free_gb | round(2) }} GB</span></td>
+              <td><span class="{{ boot_class }}">{{ boot_free_mb | round(1) }} MB</span></td>
+              <td>{% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}</td>
+              <td class="role">{% if is_db_server %}Database Server{% else %}Application Server{% endif %}</td>
+              <td>
+                {% if reachable %}
+                  <span style="color:#16a34a;">✅ Live</span>
+                {% else %}
+                  <span style="color:#dc2626;">❌ Unreachable</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
 
-<p style="margin-top:10px; font-weight:bold; text-align:center;">Summary:</p>
-<ul style="margin-top:0; padding-left:18px; font-size:13px;">
-  <li>Total Hosts: {{ total }}</li>
-  <li>Live Hosts: {{ live_hosts }}</li>
-  <li>Unreachable Hosts: {{ unreachable }}</li>
-  <li>Database Servers: {{ db_count }}</li>
-</ul>
+    {% set unreachable = total - live_hosts %}
+    <div class="summary">
+      <p><b>Summary:</b></p>
+      <ul style="margin-top:0; padding-left:18px;">
+        <li>Total Hosts: {{ total }}</li>
+        <li>Live Hosts: {{ live_hosts }}</li>
+        <li>Unreachable Hosts: {{ unreachable }}</li>
+        <li>Database Servers: {{ db_count }}</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>
