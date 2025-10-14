@@ -55,6 +55,27 @@
         group_name: "{{ target_group }}"
       run_once: true
 
+    - name: Prepare Confluence page body JSON
+      set_fact:
+        confluence_body: >-
+          {{
+            {
+              "type": "page",
+              "title": page_title,
+              "space": {"key": confluence_space},
+              "body": {
+                "storage": {
+                  "value": table_html,
+                  "representation": "storage"
+                }
+              }
+            }
+            | combine({
+                "id": existing_page_id,
+                "version": {"number": (existing_version | default(0) | int) + 1}
+              }) if existing_page_id | length > 0 else {}
+          }}
+
     - name: Create or update Confluence page
       ansible.builtin.uri:
         url: >-
@@ -64,20 +85,7 @@
         password: "{{ confluence_token }}"
         force_basic_auth: yes
         body_format: json
-        body:
-          {% if existing_page_id | length > 0 %}
-          id: "{{ existing_page_id }}"
-          version:
-            number: "{{ (existing_version | default(0) | int) + 1 }}"
-          {% endif %}
-          type: page
-          title: "{{ page_title }}"
-          space:
-            key: "{{ confluence_space }}"
-          body:
-            storage:
-              value: "{{ table_html }}"
-              representation: "storage"
+        body: "{{ confluence_body }}"
         status_code: [200, 201]
       register: confluence_update
 
