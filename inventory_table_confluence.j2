@@ -1,4 +1,4 @@
-{# inventory_table_confluence.j2 — Enhanced pastel color style + fixed alignment #}
+{# inventory_table_confluence.j2 — Bright green/red color version, role alignment fixed #}
 <h1 style="margin-bottom:6px; text-align:center;">
   {{ (group_name | replace('_',' ') | title) if group_name is defined else 'All Servers' }} Inventory Report
 </h1>
@@ -71,11 +71,10 @@
   {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
   {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) if boot_mount and boot_mount.get('size_available') else 0 %}
 
-  {# Use soft pastel backgrounds (still Confluence-safe) #}
-  {% set var_bg = '#d1fae5' if var_free_gb >= 1 else '#fee2e2' %}
-  {% set var_fg = '#065f46' if var_free_gb >= 1 else '#991b1b' %}
-  {% set boot_bg = '#d1fae5' if boot_free_mb >= 100 else '#fee2e2' %}
-  {% set boot_fg = '#065f46' if boot_free_mb >= 100 else '#991b1b' %}
+  {# Bright vivid colors for clarity #}
+  {% set var_bg = '#22c55e' if var_free_gb >= 1 else '#ef4444' %}
+  {% set boot_bg = '#22c55e' if boot_free_mb >= 100 else '#ef4444' %}
+  {% set text_color = '#ffffff' %}
 
   {% set services = facts.get('services', {}) %}
   {% set db_keywords = ['mysql','mariadb','postgres','oracle','mongodb','redis','sql'] %}
@@ -96,11 +95,12 @@
     {% set db_count = db_count + 1 %}
   {% endif %}
 
-  <tr style="border-bottom:1px solid #e2e8f0; height:48px;">
+  <tr style="border-bottom:1px solid #e2e8f0; height:46px;">
     <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_hostname', host) }}</td>
     <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
     <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
     <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
+
     <td style="padding:6px 8px; vertical-align:top;">
       {% if root_mount and root_mount.get('size_total') %}
         {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
@@ -111,14 +111,14 @@
 
     <td style="padding:6px 8px; vertical-align:top;">
       <div style="display:inline-block; min-width:70px; background-color:{{ var_bg }};
-                  color:{{ var_fg }}; padding:4px 8px; border-radius:8px; font-weight:600;">
+                  color:{{ text_color }}; padding:4px 8px; border-radius:8px; font-weight:600;">
         {{ var_free_gb | round(2) }} GB
       </div>
     </td>
 
     <td style="padding:6px 8px; vertical-align:top;">
       <div style="display:inline-block; min-width:70px; background-color:{{ boot_bg }};
-                  color:{{ boot_fg }}; padding:4px 8px; border-radius:8px; font-weight:600;">
+                  color:{{ text_color }}; padding:4px 8px; border-radius:8px; font-weight:600;">
         {{ boot_free_mb | round(1) }} MB
       </div>
     </td>
@@ -127,11 +127,11 @@
       {% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}
     </td>
 
-    <td style="padding:6px 8px; vertical-align:top;">
+    <td style="padding:6px 8px; vertical-align:top; font-weight:600; text-align:center;">
       {% if is_db_server %}
-        <b>Database Server</b>
+        <div style="margin:0;">Database Server</div>
       {% else %}
-        Application Server
+        <div style="margin:0;">Application Server</div>
       {% endif %}
     </td>
 
