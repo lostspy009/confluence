@@ -9,26 +9,18 @@
 
 - name: Publish Inventory to Confluence Cloud
   hosts: localhost
-  gather_facts: true
+  gather_facts: false
   vars:
     confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
     confluence_space: "aap"
-    page_title: "AAP Server Inventory - {{ ansible_date_time.date }}"
+    # 👇 Use the inventory/group name dynamically for the page title
+    page_title: "AAP Inventory - {{ target_group | default('all') }}"
     target_group: all
   tasks:
-
-    - name: Lookup Confluence API credentials from environment
+    - name: Load Confluence credentials from environment
       set_fact:
         confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
         confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
-
-    - name: Debug environment variables
-      ansible.builtin.shell: env | grep CONFLUENCE
-      register: env_debug
-      changed_when: false
-
-    - debug:
-        var: env_debug.stdout_lines
 
     - name: Verify credentials are loaded
       ansible.builtin.fail:
@@ -52,7 +44,7 @@
         existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Build HTML table with facts
+    - name: Build HTML table with inventory facts
       ansible.builtin.set_fact:
         table_html: "{{ lookup('template', 'inventory_table.j2') }}"
       vars:
@@ -83,6 +75,6 @@
         status_code: [200,201]
       register: confluence_update
 
-    - name: Debug output
+    - name: Debug result
       ansible.builtin.debug:
         msg: "Page successfully {{ 'updated' if existing_page_id is defined else 'created' }} at {{ confluence_update.json._links.webui }}"
