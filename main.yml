@@ -22,6 +22,14 @@
         confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
         confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
 
+    - name: Debug environment variables
+      ansible.builtin.shell: env | grep CONFLUENCE
+      register: env_debug
+      changed_when: false
+
+    - debug:
+        var: env_debug.stdout_lines
+
     - name: Verify credentials are loaded
       ansible.builtin.fail:
         msg: "Confluence credentials not set correctly in AAP"
