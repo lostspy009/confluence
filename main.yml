@@ -37,9 +37,14 @@
         return_content: yes
       register: confluence_page_check
 
+    - name: Initialize version and page ID defaults
+      set_fact:
+        existing_page_id: ""
+        existing_version: 0
+
     - name: Set page ID and version if found
       set_fact:
-        existing_page_id: "{{ confluence_page_check.json.results[0].id | default(omit) }}"
+        existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
         existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
       when: confluence_page_check.json.results | length > 0
 
