@@ -62,7 +62,7 @@
         group_hosts: "{{ host_list }}"
       run_once: true
 
-    - name: Prepare Confluence page body
+    - name: Prepare Confluence page body JSON
       set_fact:
         confluence_body: >-
           {{
@@ -79,19 +79,18 @@
             }
             | combine({
                 "id": existing_page_id,
-                "version": {"number": (existing_version | default(0) | int) + 1}
-              }) if existing_page_id | length > 0 else
-              {
-                "type": "page",
-                "title": page_title,
-                "space": {"key": confluence_space},
-                "body": {
-                  "storage": {
-                    "value": table_html,
-                    "representation": "storage"
-                  }
+                "version": {"number": (existing_version | int) + 1}
+              }) if existing_page_id | length > 0 else {
+              "type": "page",
+              "title": page_title,
+              "space": {"key": confluence_space},
+              "body": {
+                "storage": {
+                  "value": table_html,
+                  "representation": "storage"
                 }
               }
+            }
           }}
 
     - name: Create or update Confluence page (final)
