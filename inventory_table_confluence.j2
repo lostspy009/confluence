@@ -1,5 +1,5 @@
-{# inventory_table_confluence.j2 - final corrected version #}
-<h1 style="margin-bottom:6px;">AAP Server Inventory Report</h1>
+{# inventory_table_confluence.j2 - fixed reachable and role spacing #}
+<h1 style="margin-bottom:6px;">{{ (group_name | replace('_',' ') | title) if group_name is defined else 'All Servers' }} Inventory Report</h1>
 <p style="font-size:12px; color:#555; margin-top:0;">Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
 
 <table style="width:100%; border-collapse:collapse; font-size:13px;">
@@ -40,12 +40,20 @@
 {% for host in host_list %}
   {% set facts = hostvars.get(host, {}) %}
 
-  {# Parser-safe reachability check: true if we have any useful fact or an IP/hostname #}
+  {# Robust reachable check:
+     - true if ansible_facts exists and non-empty
+     - OR hostname/fqdn present and non-empty string
+     - OR default IPv4 address present and non-empty
+  #}
+  {% set af = facts.get('ansible_facts') %}
+  {% set ah = facts.get('ansible_hostname') %}
+  {% set afq = facts.get('ansible_fqdn') %}
+  {% set aip = facts.get('ansible_default_ipv4', {}).get('address') %}
   {% set reachable = (
-       (facts.get('ansible_facts') is mapping) or
-       (facts.get('ansible_hostname')) or
-       (facts.get('ansible_fqdn')) or
-       (facts.get('ansible_default_ipv4', {}).get('address'))
+       (af is mapping and af|length > 0) or
+       (ah is defined and (ah|string).strip() != '') or
+       (afq is defined and (afq|string).strip() != '') or
+       (aip is defined and (aip|string).strip() != '')
      ) %}
 
   {% if reachable %}
@@ -70,7 +78,7 @@
   {% set db_services = [] %}
   {% if services is mapping %}
     {% for svc, info in services.items() %}
-      {% if info is mapping and info.get('state') and 'running' in info.get('state') %}
+      {% if info is mapping and info.get('state') and 'running' in (info.get('state')|string) %}
         {% for keyword in db_keywords %}
           {% if keyword in svc and svc not in db_services %}
             {% set _ = db_services.append(svc) %}
@@ -99,35 +107,20 @@
     </div></td>
 
     <td style="padding:6px 8px; text-align:right; vertical-align:top;">
-      <div style="color:{{ var_color }}; font-weight:600;">
-        {{ var_free_gb | round(2) }} GB
-      </div>
+      <div style="color:{{ var_color }}; font-weight:600;">{{ var_free_gb | round(2) }} GB</div>
     </td>
 
     <td style="padding:6px 8px; text-align:right; vertical-align:top;">
-      <div style="color:{{ boot_color }}; font-weight:600;">
-        {{ boot_free_mb | round(1) }} MB
-      </div>
+      <div style="color:{{ boot_color }}; font-weight:600;">{{ boot_free_mb | round(1) }} MB</div>
     </td>
 
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>
-      {% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}
-    </div></td>
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}</div></td>
 
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;">
-      <div style="margin:0; line-height:1.2;">
-        {% if is_db_server %}<b>Database Server</b>{% else %}Application Server{% endif %}
-      </div>
-    </td>
+    {# Role cell kept on single line to avoid extra whitespace #}
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div style="margin:0; line-height:1.2;">{% if is_db_server %}<b>Database Server</b>{% else %}Application Server{% endif %}</div></td>
 
     <td style="padding:6px 8px; text-align:center; vertical-align:top; font-weight:600;">
-      <div>
-        {% if reachable %}
-          <span style="color:#2ecc71;">✅ Live</span>
-        {% else %}
-          <span style="color:#e74c3c;">❌ Unreachable</span>
-        {% endif %}
-      </div>
+      <div>{% if reachable %}<span style="color:#2ecc71;">✅ Live</span>{% else %}<span style="color:#e74c3c;">❌ Unreachable</span>{% endif %}</div>
     </td>
   </tr>
 {% endfor %}
