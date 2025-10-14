@@ -73,9 +73,18 @@
             | combine({
                 "id": existing_page_id,
                 "version": {"number": (existing_version | default(0) | int) + 1}
-              }) if existing_page_id | length > 0 else {}
+              }) if existing_page_id | length > 0 else {
+              "type": "page",
+              "title": page_title,
+              "space": {"key": confluence_space},
+              "body": {
+                "storage": {
+                  "value": table_html,
+                  "representation": "storage"
+                }
+              }
+            }
           }}
-
     - name: Create or update Confluence page
       ansible.builtin.uri:
         url: >-
