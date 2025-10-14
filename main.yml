@@ -1,45 +1,42 @@
 ---
-- name: Gather facts from all hosts
-  hosts: all
-  gather_facts: yes
-  tasks:
-    - name: Debug host facts
-      ansible.builtin.debug:
-        msg: "Gathered facts for {{ inventory_hostname }}"
-
-- name: Generate AAP HTML Inventory and Sync with Confluence
-  hosts: localhost
-  gather_facts: false
+- name: Gather inventory facts and publish report to Confluence
+  hosts: "{{ group_name | default('all') }}"
+  gather_facts: true
+  become: false
 
   vars:
     confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
     confluence_space: "aap"
-    page_title: "AAP Inventory - all"
     confluence_user: "nareshyadav.music@gmail.com"
-    confluence_token: "{{ lookup('env', 'CONFLUENCE_API_TOKEN') }}"  # stored in AAP credentials
-    # 👇 Default group if nothing provided
-    target_group: "{{ target_group | default('all') }}"
+    confluence_token: "{{ lookup('env', 'CONFLUENCE_API_TOKEN') }}"
+    # page title = AAP Inventory - <group name>
+    page_title: "AAP Inventory - {{ group_names[0] | default('all') }}"
+    html_template: "inventory_table.j2"
 
   tasks:
+    - name: Collect facts for all hosts
+      setup:
+      delegate_to: "{{ inventory_hostname }}"
+      run_once: false
 
-    - name: Determine safe inventory group
-      set_fact:
-        safe_group_name: "{{ target_group if (target_group in groups) else 'all' }}"
-        host_list: "{{ groups[target_group] | default(groups['all']) | default([]) }}"
+    - name: Build consolidated facts
       run_once: true
-
-    - name: Build HTML table with inventory facts
       set_fact:
-        table_html: "{{ lookup('template', 'inventory_table.j2') }}"
+        host_facts: >-
+          {{
+            dict(
+              groups[group_names[0]] |
+              zip(groups[group_names[0]] | map('extract', hostvars))
+            )
+          }}
+
+    - name: Generate HTML report from template
+      run_once: true
+      set_fact:
+        table_html: "{{ lookup('template', html_template) }}"
       vars:
-        group_name: "{{ safe_group_name }}"
-        group_hosts: "{{ host_list }}"
-      run_once: true
-
-    - name: Initialize Confluence tracking variables
-      set_fact:
-        existing_page_id: ""
-        existing_version: 0
+        group_name: "{{ group_names[0] }}"
+        all_hosts: "{{ host_facts }}"
 
     - name: Check if Confluence page already exists
       uri:
@@ -50,14 +47,17 @@
         force_basic_auth: yes
         return_content: yes
         status_code: 200
+      delegate_to: localhost
+      run_once: true
       register: confluence_page_check
 
     - name: Set existing page ID if found
+      run_once: true
       set_fact:
         existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Fetch current version if page exists
+    - name: Fetch current page version if exists
       uri:
         url: "{{ confluence_base_url }}/rest/api/content/{{ existing_page_id }}?expand=version"
         method: GET
@@ -66,25 +66,18 @@
         force_basic_auth: yes
         return_content: yes
         status_code: 200
+      delegate_to: localhost
+      run_once: true
       register: confluence_version_info
       when: existing_page_id | length > 0
 
-    - name: Set existing version fact
+    - name: Set current version fact
+      run_once: true
       set_fact:
-        existing_version: "{{ confluence_version_info.json.version.number | default(0) }}"
+        current_version: "{{ confluence_version_info.json.version.number | default(0) }}"
       when: existing_page_id | length > 0
 
-    - name: Debug Confluence version info
-      debug:
-        msg: "Updating Confluence page {{ existing_page_id }} to version {{ (existing_version | int) + 1 }}"
-      when: existing_page_id | length > 0
-
-    - name: Pause to avoid Confluence version conflict
-      pause:
-        seconds: 3
-      when: existing_page_id | length > 0
-
-    - name: Create or Update Confluence page
+    - name: Update or Create Confluence Page
       uri:
         url: >-
           {{ confluence_base_url }}/rest/api/content{{ '/' + existing_page_id if existing_page_id | length > 0 else '' }}
@@ -108,7 +101,7 @@
                   "representation": "storage"
                 }
               },
-              "version": {"number": (existing_version | int) + 1}
+              "version": {"number": (current_version | int) + 1}
             }
             if existing_page_id | length > 0 else
             {
@@ -125,8 +118,13 @@
           }}
         status_code: [200, 201]
         validate_certs: true
-      register: confluence_update
+      delegate_to: localhost
+      run_once: true
+      register: confluence_result
 
-    - name: Print Confluence result
+    - name: Print Confluence update status
+      run_once: true
       debug:
-        var: confluence_update.status
+        msg: >-
+          ✅ Successfully {{ 'updated' if existing_page_id | length > 0 else 'created' }}
+          Confluence page: {{ page_title }} ({{ confluence_result.status }})
