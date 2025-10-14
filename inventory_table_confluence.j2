@@ -1,4 +1,4 @@
-{# inventory_table_confluence.j2 — centered layout with full background highlighting #}
+{# inventory_table_confluence.j2 — Confluence highlight-compatible color scheme #}
 <h1 style="margin-bottom:6px; text-align:center;">
   {{ (group_name | replace('_',' ') | title) if group_name is defined else 'All Servers' }} Inventory Report
 </h1>
@@ -44,6 +44,7 @@
 {% for host in host_list %}
   {% set facts = hostvars.get(host, {}) %}
 
+  {# Reachability check #}
   {% set af = facts.get('ansible_facts') %}
   {% set ah = facts.get('ansible_hostname') %}
   {% set afq = facts.get('ansible_fqdn') %}
@@ -70,11 +71,9 @@
   {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
   {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) if boot_mount and boot_mount.get('size_available') else 0 %}
 
-  {# Background + text colors for badges #}
-  {% set var_bg = '#bbf7d0' if var_free_gb >= 1 else '#fecaca' %}
-  {% set var_fg = '#065f46' if var_free_gb >= 1 else '#7f1d1d' %}
-  {% set boot_bg = '#bbf7d0' if boot_free_mb >= 100 else '#fecaca' %}
-  {% set boot_fg = '#065f46' if boot_free_mb >= 100 else '#7f1d1d' %}
+  {# Choose highlight classes Confluence recognizes #}
+  {% set var_class = 'highlight-green' if var_free_gb >= 1 else 'highlight-red' %}
+  {% set boot_class = 'highlight-green' if boot_free_mb >= 100 else 'highlight-red' %}
 
   {% set services = facts.get('services', {}) %}
   {% set db_keywords = ['mysql','mariadb','postgres','oracle','mongodb','redis','sql'] %}
@@ -100,7 +99,6 @@
     <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
     <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
     <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
-
     <td style="padding:6px 8px; vertical-align:middle;">
       {% if root_mount and root_mount.get('size_total') %}
         {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
@@ -109,18 +107,14 @@
       {% endif %}
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle;">
-      <span style="display:inline-block; min-width:80px; padding:5px 10px; border-radius:8px;
-                   background-color:{{ var_bg }}; color:{{ var_fg }}; font-weight:600;">
-        {{ var_free_gb | round(2) }} GB
-      </span>
+    {# Use Confluence highlight class for /var #}
+    <td class="{{ var_class }}" data-highlight-colour="{{ 'green' if var_free_gb >= 1 else 'red' }}" style="padding:6px 8px; vertical-align:middle;">
+      {{ var_free_gb | round(2) }} GB
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle;">
-      <span style="display:inline-block; min-width:80px; padding:5px 10px; border-radius:8px;
-                   background-color:{{ boot_bg }}; color:{{ boot_fg }}; font-weight:600;">
-        {{ boot_free_mb | round(1) }} MB
-      </span>
+    {# Use Confluence highlight class for /boot #}
+    <td class="{{ boot_class }}" data-highlight-colour="{{ 'green' if boot_free_mb >= 100 else 'red' }}" style="padding:6px 8px; vertical-align:middle;">
+      {{ boot_free_mb | round(1) }} MB
     </td>
 
     <td style="padding:6px 8px; vertical-align:middle;">
