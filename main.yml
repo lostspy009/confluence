@@ -1,4 +1,12 @@
 ---
+- name: Gather facts from all hosts
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Debug host facts
+      ansible.builtin.debug:
+        msg: "Gathered facts for {{ inventory_hostname }}"
+
 - name: Generate AAP HTML Inventory and Sync with Confluence
   hosts: localhost
   gather_facts: false
@@ -8,7 +16,9 @@
     confluence_space: "aap"
     page_title: "AAP Inventory - all"
     confluence_user: "nareshyadav.music@gmail.com"
-    confluence_token: "{{ lookup('env', 'CONFLUENCE_API_TOKEN') }}"  # Recommended: store in AAP credential
+    confluence_token: "{{ lookup('env', 'CONFLUENCE_API_TOKEN') }}"  # stored in AAP credentials
+    # 👇 Default group if nothing provided
+    target_group: "{{ target_group | default('all') }}"
 
   tasks:
 
@@ -67,6 +77,11 @@
     - name: Debug Confluence version info
       debug:
         msg: "Updating Confluence page {{ existing_page_id }} to version {{ (existing_version | int) + 1 }}"
+      when: existing_page_id | length > 0
+
+    - name: Pause to avoid Confluence version conflict
+      pause:
+        seconds: 3
       when: existing_page_id | length > 0
 
     - name: Create or Update Confluence page
