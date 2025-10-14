@@ -5,27 +5,27 @@
   <colgroup>
     <col style="width:13%;">
     <col style="width:12%;">
-    <col style="width:14%;">
-    <col style="width:10%;">
+    <col style="width:15%;">
+    <col style="width:11%;">
     <col style="width:9%;">
     <col style="width:8%;">
     <col style="width:8%;">
     <col style="width:10%;">
     <col style="width:8%;">
-    <col style="width:8%;">
+    <col style="width:6%;">
   </colgroup>
   <tbody>
-    <tr style="background-color:#f4f5f7; text-align:left;">
-      <th style="padding:6px 8px;">Hostname</th>
-      <th style="padding:6px 8px;">IP Address</th>
-      <th style="padding:6px 8px;">OS Version</th>
-      <th style="padding:6px 8px;">Kernel</th>
-      <th style="padding:6px 8px;">Root Disk</th>
-      <th style="padding:6px 8px;">/var</th>
-      <th style="padding:6px 8px;">/boot</th>
-      <th style="padding:6px 8px;">DB Services</th>
-      <th style="padding:6px 8px;">Role</th>
-      <th style="padding:6px 8px;">Status</th>
+    <tr style="background-color:#f4f5f7;">
+      <th style="padding:6px 8px; text-align:left;">Hostname</th>
+      <th style="padding:6px 8px; text-align:left;">IP Address</th>
+      <th style="padding:6px 8px; text-align:left;">OS Version</th>
+      <th style="padding:6px 8px; text-align:left;">Kernel</th>
+      <th style="padding:6px 8px; text-align:right;">Root Disk</th>
+      <th style="padding:6px 8px; text-align:right;">/var</th>
+      <th style="padding:6px 8px; text-align:right;">/boot</th>
+      <th style="padding:6px 8px; text-align:left;">DB Services</th>
+      <th style="padding:6px 8px; text-align:left;">Role</th>
+      <th style="padding:6px 8px; text-align:center;">Status</th>
     </tr>
 
 {% set host_list = groups.get(group_name, []) %}
@@ -66,34 +66,44 @@
   {% set is_db_server = db_services | length > 0 %}
 
   <tr style="border-bottom:1px solid #e2e8f0;">
-    <td style="padding:6px 8px;">{{ facts.get('ansible_hostname', host) }}</td>
-    <td style="padding:6px 8px;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
-    <td style="padding:6px 8px;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
-    <td style="padding:6px 8px;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
-    <td style="padding:6px 8px;">
+    <td style="padding:6px 8px; text-align:left;">{{ facts.get('ansible_hostname', host) }}</td>
+    <td style="padding:6px 8px; text-align:left;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
+    <td style="padding:6px 8px; text-align:left;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
+    <td style="padding:6px 8px; text-align:left;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
+
+    <td style="padding:6px 8px; text-align:right;">
       {% if root_mount and root_mount.get('size_total') %}
         {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
       {% else %}
         N/A
       {% endif %}
     </td>
-    <td style="padding:6px 8px; color:{{ var_color }}; font-weight:600;">{{ var_free_gb | round(2) }} GB</td>
-    <td style="padding:6px 8px; color:{{ boot_color }}; font-weight:600;">{{ boot_free_mb | round(1) }} MB</td>
-    <td style="padding:6px 8px;">
+
+    <td style="padding:6px 8px; text-align:right; color:{{ var_color }}; font-weight:600;">
+      {{ var_free_gb | round(2) }} GB
+    </td>
+
+    <td style="padding:6px 8px; text-align:right; color:{{ boot_color }}; font-weight:600;">
+      {{ boot_free_mb | round(1) }} MB
+    </td>
+
+    <td style="padding:6px 8px; text-align:left;">
       {% if db_services %}
         {{ db_services | join(', ') }}
       {% else %}
         -
       {% endif %}
     </td>
-    <td style="padding:6px 8px;">
+
+    <td style="padding:6px 8px; text-align:left;">
       {% if is_db_server %}
-        <b>DB Server</b>
+        <b>Database Server</b>
       {% else %}
-        App Server
+        Application Server
       {% endif %}
     </td>
-    <td style="padding:6px 8px; font-weight:600;">
+
+    <td style="padding:6px 8px; text-align:center; font-weight:600;">
       {% if reachable %}
         <span style="color:#2ecc71;">✅ Live</span>
       {% else %}
