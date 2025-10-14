@@ -1,9 +1,5 @@
-{% set inventory_label = (group_name | replace('_', ' ') | title) if group_name is defined else 'All Servers' %}
-
-<h1 style="margin-bottom:6px;">{{ inventory_label }} Inventory Report</h1>
-<p style="font-size:12px; color:#555; margin-top:0;">
-  Generated from AAP job on {{ '%Y-%m-%d %H:%M:%S' | strftime }}
-</p>
+<h1 style="margin-bottom:6px;">AAP Server Inventory Report</h1>
+<p style="font-size:12px; color:#555; margin-top:0;">Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
 
 <table style="width:100%; border-collapse:collapse; font-size:13px;">
   <colgroup>
