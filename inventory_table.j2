@@ -1,207 +1,67 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>AAP Server Inventory Report</title>
-  <style>
-    body {
-      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
-      background: #f5f7fb;
-      color: #1f2933;
-      margin: 0;
-      padding: 0;
-    }
+<h1>AAP Server Inventory Report</h1>
+<p>Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
 
-    .container {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 2rem 1.5rem;
-    }
+<table>
+  <tbody>
+    <tr>
+      <th>Hostname</th>
+      <th>IP Address</th>
+      <th>OS Version</th>
+      <th>Kernel</th>
+      <th>Root Disk Size</th>
+      <th>/var Free Space</th>
+      <th>/boot Free Space</th>
+      <th>DB Services</th>
+      <th>Role</th>
+      <th>Status</th>
+    </tr>
 
-    header {
-      text-align: center;
-      margin-bottom: 2rem;
-    }
-
-    header h1 {
-      font-size: 2rem;
-      margin: 0;
-      color: #0b3d91;
-    }
-
-    .host-card {
-      background: #ffffff;
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 1.2rem;
-      box-shadow: 0 6px 18px -10px rgba(15, 23, 42, 0.45);
-      border: 1px solid rgba(15, 23, 42, 0.08);
-    }
-
-    .host-card h2 {
-      margin: 0 0 1rem 0;
-      font-size: 1.4rem;
-      color: #0f172a;
-    }
-
-    .summary {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
-    }
-
-    .summary-badge {
-      background: rgba(14, 165, 233, 0.12);
-      color: #0d47a1;
-      border-radius: 999px;
-      padding: 0.4rem 0.8rem;
-      font-size: 0.85rem;
-      font-weight: 500;
-    }
-
-    .summary-badge-success {
-      background: rgba(34, 197, 94, 0.16);
-      color: #166534;
-    }
-
-    .status-pill {
-      display: inline-block;
-      padding: 0.35rem 0.6rem;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      font-weight: 600;
-    }
-
-    .status-ok {
-      background: rgba(34, 197, 94, 0.16);
-      color: #166534;
-    }
-
-    .status-critical {
-      background: rgba(239, 68, 68, 0.16);
-      color: #b91c1c;
-    }
-
-    .details-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 0.8rem;
-    }
-
-    .details-table th {
-      text-align: left;
-      width: 30%;
-      padding: 0.6rem;
-      background: #f8fafc;
-      font-weight: 600;
-      color: #475569;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.3);
-    }
-
-    .details-table td {
-      padding: 0.6rem;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.15);
-      word-break: break-word;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <header>
-      <h1>AAP Server Inventory Report</h1>
-      <p>Generated from AAP Job at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
-    </header>
-
-    {# --- Group and host list safety guards --- #}
-    {% set host_list = group_hosts | default(groups[group_name] | default([])) %}
-    {% if host_list | length == 0 %}
-      <p><strong>No hosts found in group '{{ group_name }}'.</strong></p>
-    {% else %}
-
-    {% for host in host_list %}
-      {% set facts = hostvars[host] %}
-      {% set mounts = facts.get('ansible_mounts', []) %}
-
-      {# --- Safe mount lookups --- #}
-      {% set root_mount_list = mounts | selectattr('mount', '==', '/') | list %}
-      {% set root_mount = root_mount_list[0] if root_mount_list | length > 0 else none %}
-
-      {% set var_mount_list = mounts | selectattr('mount', '==', '/var') | list %}
-      {% set var_mount = var_mount_list[0] if var_mount_list | length > 0 else none %}
-
-      {% set boot_mount_list = mounts | selectattr('mount', '==', '/boot') | list %}
-      {% set boot_mount = boot_mount_list[0] if boot_mount_list | length > 0 else none %}
-
-      {# --- Disk space checks --- #}
-      {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if (var_mount and var_mount.size_available is defined) else 0 %}
-      {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) if (boot_mount and boot_mount.size_available is defined) else 0 %}
-      {% set var_class = 'status-ok' if var_free_gb >= 1 else 'status-critical' %}
-      {% set boot_class = 'status-ok' if boot_free_mb >= 100 else 'status-critical' %}
-
-      {# --- DB detection --- #}
-      {% set services = facts.get('services', {}) %}
-      {% set db_keywords = ['mysql', 'mariadb', 'postgres', 'oracle', 'mongodb', 'redis', 'sql'] %}
-      {% set db_services = [] %}
-      {% if services is mapping %}
-        {% for svc, info in services.items() if info.state is defined and 'running' in info.state %}
-          {% for keyword in db_keywords %}
-            {% if keyword in svc and svc not in db_services %}
-              {% set _ = db_services.append(svc) %}
-            {% endif %}
-          {% endfor %}
+{% set host_list = group_hosts | default(groups[group_name] | default([])) %}
+{% for host in host_list %}
+  {% set facts = hostvars.get(host, {}) %}
+  {% set reachable = facts.get('ansible_facts', facts) | length > 0 %}
+  {% set mounts = facts.get('ansible_mounts', []) %}
+  {% set root_mount = (mounts | selectattr('mount', 'equalto', '/') | list | first) %}
+  {% set var_mount = (mounts | selectattr('mount', 'equalto', '/var') | list | first) %}
+  {% set boot_mount = (mounts | selectattr('mount', 'equalto', '/boot') | list | first) %}
+  {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount else 0 %}
+  {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) if boot_mount else 0 %}
+  {% set var_color = '#2ecc71' if var_free_gb >= 1 else '#e74c3c' %}
+  {% set boot_color = '#2ecc71' if boot_free_mb >= 100 else '#e74c3c' %}
+  {% set services = facts.get('services', {}) %}
+  {% set db_keywords = ['mysql','mariadb','postgres','oracle','mongodb','redis','sql'] %}
+  {% set db_services = [] %}
+  {% if services is mapping %}
+    {% for svc, info in services.items() %}
+      {% if info.state is defined and 'running' in info.state %}
+        {% for keyword in db_keywords %}
+          {% if keyword in svc and svc not in db_services %}
+            {% set _ = db_services.append(svc) %}
+          {% endif %}
         {% endfor %}
       {% endif %}
-      {% set is_db_server = db_services | length > 0 %}
-
-      <section class="host-card">
-        <h2>{{ facts.get('ansible_hostname', host) }}
-          <small>({{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }})</small>
-        </h2>
-
-        <div class="summary">
-          <span class="summary-badge">{{ facts.get('ansible_distribution', 'Unknown OS') }} {{ facts.get('ansible_distribution_version', '') }}</span>
-          <span class="summary-badge">{{ facts.get('ansible_kernel', 'Unknown Kernel') }}</span>
-          <span class="summary-badge">{{ (facts.get('ansible_memtotal_mb', 0) / 1024) | round(1) }} GB RAM</span>
-          <span class="summary-badge">{{ facts.get('ansible_processor_vcpus', 0) }} vCPU</span>
-          {% if is_db_server %}
-            <span class="summary-badge-success">Database Server ({{ db_services | join(', ') }})</span>
-          {% else %}
-            <span class="summary-badge">Non-DB Server</span>
-          {% endif %}
-        </div>
-
-        <table class="details-table">
-          <tr>
-            <th>Hostname (FQDN)</th><td>{{ facts.get('ansible_fqdn', 'N/A') }}</td>
-          </tr>
-          <tr>
-            <th>Kernel Version</th><td>{{ facts.get('ansible_kernel', 'N/A') }}</td>
-          </tr>
-          <tr>
-            <th>Root Disk Size</th>
-            <td>{{ (root_mount.size_total / 1024 / 1024 / 1024) | round(2) if root_mount is defined and root_mount.size_total is defined else 'N/A' }} GB</td>
-          </tr>
-          <tr>
-            <th>/var Free Space</th>
-            <td><span class="status-pill {{ var_class }}">{{ var_free_gb | round(2) }} GB</span></td>
-          </tr>
-          <tr>
-            <th>/boot Free Space</th>
-            <td><span class="status-pill {{ boot_class }}">{{ boot_free_mb | round(1) }} MB</span></td>
-          </tr>
-          <tr>
-            <th>Database Services Running</th>
-            <td>{% if db_services %}{{ db_services | join(', ') }}{% else %}None{% endif %}</td>
-          </tr>
-          <tr>
-            <th>Status</th>
-            <td><span class="status-pill status-ok">✅ Live</span></td>
-          </tr>
-        </table>
-      </section>
     {% endfor %}
-    {% endif %}
-  </div>
-</body>
-</html>
+  {% endif %}
+  {% set is_db_server = db_services | length > 0 %}
+
+  <tr>
+    <td>{{ facts.get('ansible_hostname', host) }}</td>
+    <td>{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
+    <td>{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
+    <td>{{ facts.get('ansible_kernel', 'N/A') }}</td>
+    <td>{{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) if root_mount else 'N/A' }} GB</td>
+    <td><span style="color: {{ var_color }};">{{ var_free_gb | round(2) }} GB</span></td>
+    <td><span style="color: {{ boot_color }};">{{ boot_free_mb | round(1) }} MB</span></td>
+    <td>{% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}</td>
+    <td>{% if is_db_server %}<b>Database Server</b>{% else %}Application Server{% endif %}</td>
+    <td>
+      {% if reachable %}
+        <span style="color: #2ecc71;">✅ Live</span>
+      {% else %}
+        <span style="color: #e74c3c;">❌ Unreachable</span>
+      {% endif %}
+    </td>
+  </tr>
+{% endfor %}
+  </tbody>
+</table>

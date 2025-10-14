@@ -13,7 +13,6 @@
   vars:
     confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
     confluence_space: "aap"
-    # 👇 Use the inventory/group name dynamically for the page title
     page_title: "AAP Inventory - {{ target_group | default('all') }}"
     target_group: all
   tasks:
@@ -22,12 +21,12 @@
         confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
         confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
 
-    - name: Verify credentials are loaded
+    - name: Validate Confluence credentials
       ansible.builtin.fail:
-        msg: "Confluence credentials not set correctly in AAP"
+        msg: "Confluence credentials not set correctly"
       when: confluence_user == "" or confluence_token == ""
 
-    - name: Check if Confluence page already exists (with version info)
+    - name: Check if Confluence page exists
       ansible.builtin.uri:
         url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title | urlencode }}&spaceKey={{ confluence_space }}&expand=version"
         user: "{{ confluence_user }}"
@@ -37,30 +36,25 @@
         return_content: yes
       register: confluence_page_check
 
-    - name: Initialize defaults for page info
+    - name: Set page ID and version if found
       set_fact:
-        existing_page_id: ""
-        existing_version: 0
-
-    - name: Extract page ID and version if the page exists
+        existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
+        existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
       when: confluence_page_check.json.results | length > 0
-      set_fact:
-        existing_page_id: "{{ confluence_page_check.json.results[0].id }}"
-        existing_version: "{{ confluence_page_check.json.results[0].version.number }}"
 
     - name: Determine safe target group
       set_fact:
         safe_group_name: "{{ target_group if (target_group in groups) else 'all' }}"
       run_once: true
 
-    - name: Build HTML table with inventory facts
+    - name: Build Confluence Storage table with inventory data
       set_fact:
-        table_html: "{{ lookup('template', 'inventory_table.j2') }}"
+        table_html: "{{ lookup('template', 'inventory_table_confluence.j2') }}"
       vars:
         group_name: "{{ safe_group_name }}"
       run_once: true
 
-    - name: Prepare Confluence page body
+    - name: Prepare Confluence body (storage format)
       set_fact:
         confluence_body: >-
           {{
@@ -73,26 +67,12 @@
                   "value": table_html,
                   "representation": "storage"
                 }
-              }
+              },
+              "version": {"number": (existing_version | int) + 1}
             }
-            | combine({
-                "id": existing_page_id,
-                "version": {"number": (existing_version | default(0) | int) + 1}
-              }) if existing_page_id | length > 0 else
-              {
-                "type": "page",
-                "title": page_title,
-                "space": {"key": confluence_space},
-                "body": {
-                  "storage": {
-                    "value": table_html,
-                    "representation": "storage"
-                  }
-                }
-              }
           }}
 
-    - name: Create or update Confluence page (final)
+    - name: Create or update Confluence page
       ansible.builtin.uri:
         url: >-
           {{ confluence_base_url }}/rest/api/content{{ '/' + existing_page_id if existing_page_id | length > 0 else '' }}
@@ -105,4 +85,3 @@
         body_format: json
         body: "{{ confluence_body }}"
         status_code: [200, 201]
-      register: confluence_update
