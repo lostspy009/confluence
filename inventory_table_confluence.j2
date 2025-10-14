@@ -1,38 +1,36 @@
-<h1>AAP Server Inventory Report</h1>
-<p>Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
+<h1 style="margin-bottom:6px;">AAP Server Inventory Report</h1>
+<p style="font-size:12px; color:#555; margin-top:0;">Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
 
-<table style="width:100%; border-collapse:collapse;">
+<table style="width:100%; border-collapse:collapse; font-size:13px;">
   <colgroup>
-    <col style="width:12%;">
+    <col style="width:13%;">
     <col style="width:12%;">
     <col style="width:14%;">
     <col style="width:10%;">
+    <col style="width:9%;">
+    <col style="width:8%;">
+    <col style="width:8%;">
     <col style="width:10%;">
-    <col style="width:10%;">
-    <col style="width:10%;">
-    <col style="width:10%;">
-    <col style="width:7%;">
-    <col style="width:5%;">
+    <col style="width:8%;">
+    <col style="width:8%;">
   </colgroup>
   <tbody>
-    <tr style="background-color:#f1f5f9; text-align:left;">
-      <th>Hostname</th>
-      <th>IP Address</th>
-      <th>OS Version</th>
-      <th>Kernel</th>
-      <th>Root Disk</th>
-      <th>/var Free</th>
-      <th>/boot Free</th>
-      <th>DB Services</th>
-      <th>Role</th>
-      <th>Status</th>
+    <tr style="background-color:#f4f5f7; text-align:left;">
+      <th style="padding:6px 8px;">Hostname</th>
+      <th style="padding:6px 8px;">IP Address</th>
+      <th style="padding:6px 8px;">OS Version</th>
+      <th style="padding:6px 8px;">Kernel</th>
+      <th style="padding:6px 8px;">Root Disk</th>
+      <th style="padding:6px 8px;">/var</th>
+      <th style="padding:6px 8px;">/boot</th>
+      <th style="padding:6px 8px;">DB Services</th>
+      <th style="padding:6px 8px;">Role</th>
+      <th style="padding:6px 8px;">Status</th>
     </tr>
 
 {% set host_list = groups.get(group_name, []) %}
 {% if host_list | length == 0 %}
-  <tr>
-    <td colspan="10"><b>No hosts found in group '{{ group_name }}'</b></td>
-  </tr>
+  <tr><td colspan="10" style="padding:8px;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
 {% else %}
 {% for host in host_list %}
   {% set facts = hostvars.get(host, {}) %}
@@ -68,38 +66,38 @@
   {% set is_db_server = db_services | length > 0 %}
 
   <tr style="border-bottom:1px solid #e2e8f0;">
-    <td>{{ facts.get('ansible_hostname', host) }}</td>
-    <td>{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
-    <td>{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
-    <td>{{ facts.get('ansible_kernel', 'N/A') }}</td>
-    <td>
+    <td style="padding:6px 8px;">{{ facts.get('ansible_hostname', host) }}</td>
+    <td style="padding:6px 8px;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
+    <td style="padding:6px 8px;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
+    <td style="padding:6px 8px;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
+    <td style="padding:6px 8px;">
       {% if root_mount and root_mount.get('size_total') %}
         {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
       {% else %}
         N/A
       {% endif %}
     </td>
-    <td><span style="color: {{ var_color }}; font-weight:600;">{{ var_free_gb | round(2) }} GB</span></td>
-    <td><span style="color: {{ boot_color }}; font-weight:600;">{{ boot_free_mb | round(1) }} MB</span></td>
-    <td>
+    <td style="padding:6px 8px; color:{{ var_color }}; font-weight:600;">{{ var_free_gb | round(2) }} GB</td>
+    <td style="padding:6px 8px; color:{{ boot_color }}; font-weight:600;">{{ boot_free_mb | round(1) }} MB</td>
+    <td style="padding:6px 8px;">
       {% if db_services %}
         {{ db_services | join(', ') }}
       {% else %}
         -
       {% endif %}
     </td>
-    <td>
+    <td style="padding:6px 8px;">
       {% if is_db_server %}
-        <b>Database Server</b>
+        <b>DB Server</b>
       {% else %}
-        Application Server
+        App Server
       {% endif %}
     </td>
-    <td>
+    <td style="padding:6px 8px; font-weight:600;">
       {% if reachable %}
-        <span style="color:#2ecc71; font-weight:600;">✅ Live</span>
+        <span style="color:#2ecc71;">✅ Live</span>
       {% else %}
-        <span style="color:#e74c3c; font-weight:600;">❌ Unreachable</span>
+        <span style="color:#e74c3c;">❌ Unreachable</span>
       {% endif %}
     </td>
   </tr>
@@ -131,8 +129,8 @@
 {% endfor %}
 {% set unreachable = total - live_hosts %}
 
-<p><b>Summary:</b></p>
-<ul>
+<p style="margin-top:10px;"><b>Summary:</b></p>
+<ul style="margin-top:0; padding-left:18px; font-size:13px;">
   <li>Total Hosts: {{ total }}</li>
   <li>Live Hosts: {{ live_hosts }}</li>
   <li>Unreachable Hosts: {{ unreachable }}</li>
