@@ -1,0 +1,80 @@
+---
+- name: Gather facts from all hosts
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Debug host facts
+      ansible.builtin.debug:
+        msg: "Gathered facts for {{ inventory_hostname }}"
+
+- name: Publish Inventory to Confluence Cloud
+  hosts: localhost
+  gather_facts: false
+  vars:
+    confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
+    confluence_space: "aap"
+    page_title: "AAP Server Inventory - {{ ansible_date_time.date }}"
+    target_group: all
+  tasks:
+
+    - name: Lookup Confluence API credentials from environment
+      set_fact:
+        confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
+        confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
+
+    - name: Verify credentials are loaded
+      ansible.builtin.fail:
+        msg: "Confluence credentials not set correctly in AAP"
+      when: confluence_user == "" or confluence_token == ""
+
+    - name: Check if Confluence page already exists
+      ansible.builtin.uri:
+        url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title }}&spaceKey={{ confluence_space }}"
+        method: GET
+        user: "{{ confluence_user }}"
+        password: "{{ confluence_token }}"
+        force_basic_auth: yes
+        status_code: 200
+        return_content: yes
+      register: confluence_page_check
+
+    - name: Set page ID and version if found
+      set_fact:
+        existing_page_id: "{{ confluence_page_check.json.results[0].id | default(omit) }}"
+        existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
+      when: confluence_page_check.json.results | length > 0
+
+    - name: Build HTML table with facts
+      ansible.builtin.set_fact:
+        table_html: "{{ lookup('template', 'inventory_table.j2') }}"
+      vars:
+        group_name: "{{ target_group }}"
+      run_once: true
+
+    - name: Create or update Confluence page
+      ansible.builtin.uri:
+        url: >-
+          {{ confluence_base_url }}/rest/api/content/{{ existing_page_id | default('') }}
+        method: "{{ 'PUT' if existing_page_id is defined else 'POST' }}"
+        user: "{{ confluence_user }}"
+        password: "{{ confluence_token }}"
+        force_basic_auth: yes
+        body_format: json
+        body:
+          id: "{{ existing_page_id | default(omit) }}"
+          type: page
+          title: "{{ page_title }}"
+          space:
+            key: "{{ confluence_space }}"
+          body:
+            storage:
+              value: "{{ table_html }}"
+              representation: "storage"
+          version:
+            number: "{{ (existing_version | int) + 1 }}"
+        status_code: [200,201]
+      register: confluence_update
+
+    - name: Debug output
+      ansible.builtin.debug:
+        msg: "Page successfully {{ 'updated' if existing_page_id is defined else 'created' }} at {{ confluence_update.json._links.webui }}"
