@@ -58,14 +58,18 @@
     - name: Create or update Confluence page
       ansible.builtin.uri:
         url: >-
-          {{ confluence_base_url }}/rest/api/content/{{ existing_page_id | default('') }}
-        method: "{{ 'PUT' if existing_page_id is defined else 'POST' }}"
+          {{ confluence_base_url }}/rest/api/content{{ '/' + existing_page_id if existing_page_id | length > 0 else '' }}
+        method: "{{ 'PUT' if existing_page_id | length > 0 else 'POST' }}"
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
         force_basic_auth: yes
         body_format: json
         body:
-          id: "{{ existing_page_id | default(omit) }}"
+          {% if existing_page_id | length > 0 %}
+          id: "{{ existing_page_id }}"
+          version:
+            number: "{{ (existing_version | default(0) | int) + 1 }}"
+          {% endif %}
           type: page
           title: "{{ page_title }}"
           space:
@@ -74,9 +78,7 @@
             storage:
               value: "{{ table_html }}"
               representation: "storage"
-          version:
-            number: "{{ (existing_version | int) + 1 }}"
-        status_code: [200,201]
+        status_code: [200, 201]
       register: confluence_update
 
     - name: Debug result
