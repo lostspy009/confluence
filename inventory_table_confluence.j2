@@ -1,4 +1,4 @@
-{# inventory_table_confluence.j2 — color-badges + centered layout, compatible with Confluence #}
+{# inventory_table_confluence.j2 — centered layout with full background highlighting #}
 <h1 style="margin-bottom:6px; text-align:center;">
   {{ (group_name | replace('_',' ') | title) if group_name is defined else 'All Servers' }} Inventory Report
 </h1>
@@ -70,10 +70,10 @@
   {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
   {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) if boot_mount and boot_mount.get('size_available') else 0 %}
 
-  {# badge backgrounds and foregrounds: light bg + dark text (more likely to be allowed/displayed) #}
-  {% set var_bg = '#d1fae5' if var_free_gb >= 1 else '#fee2e2' %}
+  {# Background + text colors for badges #}
+  {% set var_bg = '#bbf7d0' if var_free_gb >= 1 else '#fecaca' %}
   {% set var_fg = '#065f46' if var_free_gb >= 1 else '#7f1d1d' %}
-  {% set boot_bg = '#d1fae5' if boot_free_mb >= 100 else '#fee2e2' %}
+  {% set boot_bg = '#bbf7d0' if boot_free_mb >= 100 else '#fecaca' %}
   {% set boot_fg = '#065f46' if boot_free_mb >= 100 else '#7f1d1d' %}
 
   {% set services = facts.get('services', {}) %}
@@ -95,52 +95,52 @@
     {% set db_count = db_count + 1 %}
   {% endif %}
 
-  <tr style="border-bottom:1px solid #e2e8f0; height:40px;">
-    <td style="padding:6px 8px; vertical-align:middle; text-align:center;">{{ facts.get('ansible_hostname', host) }}</td>
-    <td style="padding:6px 8px; vertical-align:middle; text-align:center;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
-    <td style="padding:6px 8px; vertical-align:middle; text-align:center;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
-    <td style="padding:6px 8px; vertical-align:middle; text-align:center;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
+  <tr style="border-bottom:1px solid #e2e8f0; height:44px;">
+    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_hostname', host) }}</td>
+    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
+    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
+    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
 
-    <td style="padding:6px 8px; vertical-align:middle; text-align:center;">
+    <td style="padding:6px 8px; vertical-align:middle;">
       {% if root_mount and root_mount.get('size_total') %}
-        <span style="display:inline-block; min-width:72px;">{{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB</span>
+        {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
       {% else %}
-        <span style="display:inline-block; min-width:72px;">N/A</span>
+        N/A
       {% endif %}
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle; text-align:center;">
-      {# /var badge #}
-      <span style="display:inline-block; min-width:72px; padding:4px 8px; border-radius:6px; background-color:{{ var_bg }}; color:{{ var_fg }}; font-weight:600;">
+    <td style="padding:6px 8px; vertical-align:middle;">
+      <span style="display:inline-block; min-width:80px; padding:5px 10px; border-radius:8px;
+                   background-color:{{ var_bg }}; color:{{ var_fg }}; font-weight:600;">
         {{ var_free_gb | round(2) }} GB
       </span>
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle; text-align:center;">
-      {# /boot badge #}
-      <span style="display:inline-block; min-width:72px; padding:4px 8px; border-radius:6px; background-color:{{ boot_bg }}; color:{{ boot_fg }}; font-weight:600;">
+    <td style="padding:6px 8px; vertical-align:middle;">
+      <span style="display:inline-block; min-width:80px; padding:5px 10px; border-radius:8px;
+                   background-color:{{ boot_bg }}; color:{{ boot_fg }}; font-weight:600;">
         {{ boot_free_mb | round(1) }} MB
       </span>
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle; text-align:center;">
-      <span style="display:inline-block; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-        {% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}
-      </span>
+    <td style="padding:6px 8px; vertical-align:middle;">
+      {% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle; text-align:center;">
-      <span style="display:inline-block; margin:0; line-height:1.2;">{% if is_db_server %}<b>Database Server</b>{% else %}Application Server{% endif %}</span>
+    <td style="padding:6px 8px; vertical-align:middle;">
+      {% if is_db_server %}
+        <b>Database Server</b>
+      {% else %}
+        Application Server
+      {% endif %}
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle; text-align:center; font-weight:600;">
-      <span style="display:inline-block;">
-        {% if reachable %}
-          <span style="color:#065f46;">✅ Live</span>
-        {% else %}
-          <span style="color:#7f1d1d;">❌ Unreachable</span>
-        {% endif %}
-      </span>
+    <td style="padding:6px 8px; vertical-align:middle; font-weight:600;">
+      {% if reachable %}
+        <span style="color:#16a34a;">✅ Live</span>
+      {% else %}
+        <span style="color:#dc2626;">❌ Unreachable</span>
+      {% endif %}
     </td>
   </tr>
 {% endfor %}
