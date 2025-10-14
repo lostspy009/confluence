@@ -29,8 +29,7 @@
 
     - name: Check if Confluence page already exists
       ansible.builtin.uri:
-        url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title }}&spaceKey={{ confluence_space }}"
-        method: GET
+        url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title | urlencode }}&spaceKey={{ confluence_space }}"
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
         force_basic_auth: yes
