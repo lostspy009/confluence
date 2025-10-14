@@ -1,3 +1,4 @@
+{# inventory_table_confluence.j2 - final corrected version #}
 <h1 style="margin-bottom:6px;">AAP Server Inventory Report</h1>
 <p style="font-size:12px; color:#555; margin-top:0;">Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
 
@@ -29,12 +30,27 @@
     </tr>
 
 {% set host_list = groups.get(group_name, []) %}
+{% set total = host_list | length %}
+{% set live_hosts = 0 %}
+{% set db_count = 0 %}
+
 {% if host_list | length == 0 %}
   <tr><td colspan="10" style="padding:8px;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
 {% else %}
 {% for host in host_list %}
   {% set facts = hostvars.get(host, {}) %}
-  {% set reachable = (facts is defined and facts | length > 0 and facts.get('ansible_facts', facts) | length > 0) %}
+
+  {# Parser-safe reachability check: true if we have any useful fact or an IP/hostname #}
+  {% set reachable = (
+       (facts.get('ansible_facts') is mapping) or
+       (facts.get('ansible_hostname')) or
+       (facts.get('ansible_fqdn')) or
+       (facts.get('ansible_default_ipv4', {}).get('address'))
+     ) %}
+
+  {% if reachable %}
+    {% set live_hosts = live_hosts + 1 %}
+  {% endif %}
 
   {% set mounts = facts.get('ansible_mounts', []) %}
   {% set root_list = mounts | selectattr('mount', 'equalto', '/') | list %}
@@ -54,7 +70,7 @@
   {% set db_services = [] %}
   {% if services is mapping %}
     {% for svc, info in services.items() %}
-      {% if info.state is defined and 'running' in info.state %}
+      {% if info is mapping and info.get('state') and 'running' in info.get('state') %}
         {% for keyword in db_keywords %}
           {% if keyword in svc and svc not in db_services %}
             {% set _ = db_services.append(svc) %}
@@ -64,55 +80,54 @@
     {% endfor %}
   {% endif %}
   {% set is_db_server = db_services | length > 0 %}
+  {% if is_db_server %}
+    {% set db_count = db_count + 1 %}
+  {% endif %}
 
   <tr style="border-bottom:1px solid #e2e8f0;">
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;">{{ facts.get('ansible_hostname', host) }}</td>
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_hostname', host) }}</div></td>
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</div></td>
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</div></td>
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_kernel', 'N/A') }}</div></td>
 
-    <td style="padding:6px 8px; text-align:right; vertical-align:top;">
+    <td style="padding:6px 8px; text-align:right; vertical-align:top;"><div>
       {% if root_mount and root_mount.get('size_total') %}
         {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
       {% else %}
         N/A
       {% endif %}
-    </td>
+    </div></td>
 
     <td style="padding:6px 8px; text-align:right; vertical-align:top;">
-      <p style="margin:0; color:{{ var_color }}; font-weight:600;">
+      <div style="color:{{ var_color }}; font-weight:600;">
         {{ var_free_gb | round(2) }} GB
-      </p>
+      </div>
     </td>
 
     <td style="padding:6px 8px; text-align:right; vertical-align:top;">
-      <p style="margin:0; color:{{ boot_color }}; font-weight:600;">
+      <div style="color:{{ boot_color }}; font-weight:600;">
         {{ boot_free_mb | round(1) }} MB
-      </p>
+      </div>
     </td>
 
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;">
-      {% if db_services %}
-        {{ db_services | join(', ') }}
-      {% else %}
-        -
-      {% endif %}
-    </td>
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>
+      {% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}
+    </div></td>
 
     <td style="padding:6px 8px; text-align:left; vertical-align:top;">
-      {% if is_db_server %}
-        <b>Database Server</b>
-      {% else %}
-        Application Server
-      {% endif %}
+      <div style="margin:0; line-height:1.2;">
+        {% if is_db_server %}<b>Database Server</b>{% else %}Application Server{% endif %}
+      </div>
     </td>
 
     <td style="padding:6px 8px; text-align:center; vertical-align:top; font-weight:600;">
-      {% if reachable %}
-        <span style="color:#2ecc71;">✅ Live</span>
-      {% else %}
-        <span style="color:#e74c3c;">❌ Unreachable</span>
-      {% endif %}
+      <div>
+        {% if reachable %}
+          <span style="color:#2ecc71;">✅ Live</span>
+        {% else %}
+          <span style="color:#e74c3c;">❌ Unreachable</span>
+        {% endif %}
+      </div>
     </td>
   </tr>
 {% endfor %}
@@ -120,27 +135,6 @@
   </tbody>
 </table>
 
-{% set total = host_list | length %}
-{% set live_hosts = 0 %}
-{% set db_count = 0 %}
-{% for host in host_list %}
-  {% set facts = hostvars.get(host, {}) %}
-  {% if facts is defined and facts | length > 0 %}
-    {% set live_hosts = live_hosts + 1 %}
-  {% endif %}
-  {% set services = facts.get('services', {}) %}
-  {% if services is mapping %}
-    {% for svc, info in services.items() %}
-      {% if info.state is defined and 'running' in info.state %}
-        {% for keyword in ['mysql','mariadb','postgres','oracle','mongodb','redis','sql'] %}
-          {% if keyword in svc %}
-            {% set db_count = db_count + 1 %}
-          {% endif %}
-        {% endfor %}
-      {% endif %}
-    {% endfor %}
-  {% endif %}
-{% endfor %}
 {% set unreachable = total - live_hosts %}
 
 <p style="margin-top:10px;"><b>Summary:</b></p>

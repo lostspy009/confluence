@@ -1,145 +1,87 @@
-<h1 style="margin-bottom:6px;">AAP Server Inventory Report</h1>
-<p style="font-size:12px; color:#555; margin-top:0;">Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
+---
+- name: Gather facts from all hosts
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Debug host facts
+      ansible.builtin.debug:
+        msg: "Gathered facts for {{ inventory_hostname }}"
 
-<table style="width:100%; border-collapse:collapse; font-size:13px;">
-  <colgroup>
-    <col style="width:13%;">
-    <col style="width:12%;">
-    <col style="width:15%;">
-    <col style="width:11%;">
-    <col style="width:9%;">
-    <col style="width:8%;">
-    <col style="width:8%;">
-    <col style="width:10%;">
-    <col style="width:8%;">
-    <col style="width:6%;">
-  </colgroup>
-  <tbody>
-    <tr style="background-color:#f4f5f7;">
-      <th style="padding:6px 8px; text-align:left;">Hostname</th>
-      <th style="padding:6px 8px; text-align:left;">IP Address</th>
-      <th style="padding:6px 8px; text-align:left;">OS Version</th>
-      <th style="padding:6px 8px; text-align:left;">Kernel</th>
-      <th style="padding:6px 8px; text-align:right;">Root Disk</th>
-      <th style="padding:6px 8px; text-align:right;">/var</th>
-      <th style="padding:6px 8px; text-align:right;">/boot</th>
-      <th style="padding:6px 8px; text-align:left;">DB Services</th>
-      <th style="padding:6px 8px; text-align:left;">Role</th>
-      <th style="padding:6px 8px; text-align:center;">Status</th>
-    </tr>
+- name: Publish Inventory to Confluence Cloud
+  hosts: localhost
+  gather_facts: false
+  vars:
+    confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
+    confluence_space: "aap"
+    page_title: "AAP Inventory - {{ target_group | default('all') }}"
+    target_group: all
+  tasks:
+    - name: Load Confluence credentials from environment
+      set_fact:
+        confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
+        confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
 
-{% set host_list = groups.get(group_name, []) %}
-{% set total = host_list | length %}
-{% set live_hosts = 0 %}
-{% set db_count = 0 %}
+    - name: Validate Confluence credentials
+      ansible.builtin.fail:
+        msg: "Confluence credentials not set correctly"
+      when: confluence_user == "" or confluence_token == ""
 
-{% if host_list | length == 0 %}
-  <tr><td colspan="10" style="padding:8px;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
-{% else %}
-{% for host in host_list %}
-  {% set facts = hostvars.get(host, {}) %}
+    - name: Check if Confluence page exists
+      ansible.builtin.uri:
+        url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title | urlencode }}&spaceKey={{ confluence_space }}&expand=version"
+        user: "{{ confluence_user }}"
+        password: "{{ confluence_token }}"
+        force_basic_auth: yes
+        status_code: 200
+        return_content: yes
+      register: confluence_page_check
 
-  {# Reachability: consider host reachable if we have any ansible facts or common fact fields #}
-  {% set reachable = (facts is mapping) and (
-       (facts.get('ansible_facts') is mapping) or
-       (facts.get('ansible_hostname') is defined and facts.get('ansible_hostname') | length > 0) or
-       (facts.get('ansible_fqdn') is defined and facts.get('ansible_fqdn') | length > 0) or
-       (facts.get('ansible_default_ipv4') is mapping and facts.get('ansible_default_ipv4').get('address'))
-     ) %}
+    - name: Set page ID and version if found
+      set_fact:
+        existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
+        existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
+      when: confluence_page_check.json.results | length > 0
 
-  {% if reachable %}
-    {% set live_hosts = live_hosts + 1 %}
-  {% endif %}
+    - name: Determine safe target group
+      set_fact:
+        safe_group_name: "{{ target_group if (target_group in groups) else 'all' }}"
+      run_once: true
 
-  {% set mounts = facts.get('ansible_mounts', []) %}
-  {% set root_list = mounts | selectattr('mount', 'equalto', '/') | list %}
-  {% set var_list  = mounts | selectattr('mount', 'equalto', '/var') | list %}
-  {% set boot_list = mounts | selectattr('mount', 'equalto', '/boot') | list %}
-  {% set root_mount = root_list[0] if root_list | length > 0 else {} %}
-  {% set var_mount  = var_list[0]  if var_list | length > 0  else {} %}
-  {% set boot_mount = boot_list[0] if boot_list | length > 0 else {} %}
+    - name: Build Confluence Storage table with inventory data
+      set_fact:
+        table_html: "{{ lookup('template', 'inventory_table_confluence.j2') }}"
+      vars:
+        group_name: "{{ safe_group_name }}"
+      run_once: true
 
-  {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
-  {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) if boot_mount and boot_mount.get('size_available') else 0 %}
-  {% set var_color = '#2ecc71' if var_free_gb >= 1 else '#e74c3c' %}
-  {% set boot_color = '#2ecc71' if boot_free_mb >= 100 else '#e74c3c' %}
+    - name: Prepare Confluence body (storage format)
+      set_fact:
+        confluence_body: >-
+          {{
+            {
+              "type": "page",
+              "title": page_title,
+              "space": {"key": confluence_space},
+              "body": {
+                "storage": {
+                  "value": table_html,
+                  "representation": "storage"
+                }
+              },
+              "version": {"number": (existing_version | int) + 1}
+            }
+          }}
 
-  {% set services = facts.get('services', {}) %}
-  {% set db_keywords = ['mysql','mariadb','postgres','oracle','mongodb','redis','sql'] %}
-  {% set db_services = [] %}
-  {% if services is mapping %}
-    {% for svc, info in services.items() %}
-      {% if info.state is defined and 'running' in info.state %}
-        {% for keyword in db_keywords %}
-          {% if keyword in svc and svc not in db_services %}
-            {% set _ = db_services.append(svc) %}
-          {% endif %}
-        {% endfor %}
-      {% endif %}
-    {% endfor %}
-  {% endif %}
-  {% set is_db_server = db_services | length > 0 %}
-  {% if is_db_server %}
-    {% set db_count = db_count + 1 %}
-  {% endif %}
-
-  <tr style="border-bottom:1px solid #e2e8f0;">
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_hostname', host) }}</div></td>
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</div></td>
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</div></td>
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_kernel', 'N/A') }}</div></td>
-
-    <td style="padding:6px 8px; text-align:right; vertical-align:top;"><div>
-      {% if root_mount and root_mount.get('size_total') %}
-        {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
-      {% else %}
-        N/A
-      {% endif %}
-    </div></td>
-
-    <td style="padding:6px 8px; text-align:right; vertical-align:top;">
-      <div style="color:{{ var_color }}; font-weight:600;">
-        {{ var_free_gb | round(2) }} GB
-      </div>
-    </td>
-
-    <td style="padding:6px 8px; text-align:right; vertical-align:top;">
-      <div style="color:{{ boot_color }}; font-weight:600;">
-        {{ boot_free_mb | round(1) }} MB
-      </div>
-    </td>
-
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>
-      {% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}
-    </div></td>
-
-    <td style="padding:6px 8px; text-align:left; vertical-align:top;">
-      <div style="margin:0; line-height:1.2;">
-        {% if is_db_server %}<b>Database Server</b>{% else %}Application Server{% endif %}
-      </div>
-    </td>
-
-    <td style="padding:6px 8px; text-align:center; vertical-align:top; font-weight:600;">
-      <div>
-        {% if reachable %}
-          <span style="color:#2ecc71;">✅ Live</span>
-        {% else %}
-          <span style="color:#e74c3c;">❌ Unreachable</span>
-        {% endif %}
-      </div>
-    </td>
-  </tr>
-{% endfor %}
-{% endif %}
-  </tbody>
-</table>
-
-{% set unreachable = total - live_hosts %}
-
-<p style="margin-top:10px;"><b>Summary:</b></p>
-<ul style="margin-top:0; padding-left:18px; font-size:13px;">
-  <li>Total Hosts: {{ total }}</li>
-  <li>Live Hosts: {{ live_hosts }}</li>
-  <li>Unreachable Hosts: {{ unreachable }}</li>
-  <li>Database Servers: {{ db_count }}</li>
-</ul>
+    - name: Create or update Confluence page
+      ansible.builtin.uri:
+        url: >-
+          {{ confluence_base_url }}/rest/api/content{{ '/' + existing_page_id if existing_page_id | length > 0 else '' }}
+        method: "{{ 'PUT' if existing_page_id | length > 0 else 'POST' }}"
+        user: "{{ confluence_user }}"
+        password: "{{ confluence_token }}"
+        force_basic_auth: yes
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body: "{{ confluence_body }}"
+        status_code: [200, 201]
