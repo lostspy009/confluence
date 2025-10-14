@@ -9,7 +9,7 @@
 
 - name: Publish Inventory to Confluence Cloud
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
   vars:
     confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
     confluence_space: "aap"
