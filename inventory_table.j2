@@ -28,4 +28,4 @@
   </tr>
   {% endfor %}
 </table>
-<p>Last updated from AAP job at {{ lookup('pipe', 'date +%Y-%m-%d %H:%M:%S') }}</p>
+<p>Last updated from AAP job at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
