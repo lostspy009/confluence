@@ -1,16 +1,28 @@
 <h1>AAP Server Inventory Report</h1>
 <p>Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
 
-<table>
+<table style="width:100%; border-collapse:collapse;">
+  <colgroup>
+    <col style="width:12%;">
+    <col style="width:12%;">
+    <col style="width:14%;">
+    <col style="width:10%;">
+    <col style="width:10%;">
+    <col style="width:10%;">
+    <col style="width:10%;">
+    <col style="width:10%;">
+    <col style="width:7%;">
+    <col style="width:5%;">
+  </colgroup>
   <tbody>
-    <tr>
+    <tr style="background-color:#f1f5f9; text-align:left;">
       <th>Hostname</th>
       <th>IP Address</th>
       <th>OS Version</th>
       <th>Kernel</th>
-      <th>Root Disk Size</th>
-      <th>/var Free Space</th>
-      <th>/boot Free Space</th>
+      <th>Root Disk</th>
+      <th>/var Free</th>
+      <th>/boot Free</th>
       <th>DB Services</th>
       <th>Role</th>
       <th>Status</th>
@@ -55,7 +67,7 @@
   {% endif %}
   {% set is_db_server = db_services | length > 0 %}
 
-  <tr>
+  <tr style="border-bottom:1px solid #e2e8f0;">
     <td>{{ facts.get('ansible_hostname', host) }}</td>
     <td>{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
     <td>{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
@@ -67,8 +79,8 @@
         N/A
       {% endif %}
     </td>
-    <td><span style="color: {{ var_color }};">{{ var_free_gb | round(2) }} GB</span></td>
-    <td><span style="color: {{ boot_color }};">{{ boot_free_mb | round(1) }} MB</span></td>
+    <td><span style="color: {{ var_color }}; font-weight:600;">{{ var_free_gb | round(2) }} GB</span></td>
+    <td><span style="color: {{ boot_color }}; font-weight:600;">{{ boot_free_mb | round(1) }} MB</span></td>
     <td>
       {% if db_services %}
         {{ db_services | join(', ') }}
@@ -85,9 +97,9 @@
     </td>
     <td>
       {% if reachable %}
-        <span style="color: #2ecc71;">✅ Live</span>
+        <span style="color:#2ecc71; font-weight:600;">✅ Live</span>
       {% else %}
-        <span style="color: #e74c3c;">❌ Unreachable</span>
+        <span style="color:#e74c3c; font-weight:600;">❌ Unreachable</span>
       {% endif %}
     </td>
   </tr>
@@ -97,11 +109,13 @@
 </table>
 
 {% set total = host_list | length %}
-{% set live_hosts = host_list | select('in', hostvars.keys()) | list | length %}
-{% set unreachable = total - live_hosts %}
+{% set live_hosts = 0 %}
 {% set db_count = 0 %}
 {% for host in host_list %}
   {% set facts = hostvars.get(host, {}) %}
+  {% if facts is defined and facts | length > 0 %}
+    {% set live_hosts = live_hosts + 1 %}
+  {% endif %}
   {% set services = facts.get('services', {}) %}
   {% if services is mapping %}
     {% for svc, info in services.items() %}
@@ -115,6 +129,7 @@
     {% endfor %}
   {% endif %}
 {% endfor %}
+{% set unreachable = total - live_hosts %}
 
 <p><b>Summary:</b></p>
 <ul>
