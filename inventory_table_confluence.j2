@@ -1,12 +1,8 @@
-{# inventory_table_confluence.j2 — clean centered layout with color coding #}
-<h1 style="margin-bottom:6px; text-align:center;">
-  {{ (group_name | replace('_',' ') | title) if group_name is defined else 'All Servers' }} Inventory Report
-</h1>
-<p style="font-size:12px; color:#555; margin-top:0; text-align:center;">
-  Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}
-</p>
+{# inventory_table_confluence.j2 - fixed reachable and role spacing #}
+<h1 style="margin-bottom:6px;">{{ (group_name | replace('_',' ') | title) if group_name is defined else 'All Servers' }} Inventory Report</h1>
+<p style="font-size:12px; color:#555; margin-top:0;">Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
 
-<table style="width:100%; border-collapse:collapse; font-size:13px; text-align:center;">
+<table style="width:100%; border-collapse:collapse; font-size:13px;">
   <colgroup>
     <col style="width:13%;">
     <col style="width:12%;">
@@ -21,16 +17,16 @@
   </colgroup>
   <tbody>
     <tr style="background-color:#f4f5f7;">
-      <th style="padding:8px;">Hostname</th>
-      <th style="padding:8px;">IP Address</th>
-      <th style="padding:8px;">OS Version</th>
-      <th style="padding:8px;">Kernel</th>
-      <th style="padding:8px;">Root Disk</th>
-      <th style="padding:8px;">/var</th>
-      <th style="padding:8px;">/boot</th>
-      <th style="padding:8px;">DB Services</th>
-      <th style="padding:8px;">Role</th>
-      <th style="padding:8px;">Status</th>
+      <th style="padding:6px 8px; text-align:left;">Hostname</th>
+      <th style="padding:6px 8px; text-align:left;">IP Address</th>
+      <th style="padding:6px 8px; text-align:left;">OS Version</th>
+      <th style="padding:6px 8px; text-align:left;">Kernel</th>
+      <th style="padding:6px 8px; text-align:right;">Root Disk</th>
+      <th style="padding:6px 8px; text-align:right;">/var</th>
+      <th style="padding:6px 8px; text-align:right;">/boot</th>
+      <th style="padding:6px 8px; text-align:left;">DB Services</th>
+      <th style="padding:6px 8px; text-align:left;">Role</th>
+      <th style="padding:6px 8px; text-align:center;">Status</th>
     </tr>
 
 {% set host_list = groups.get(group_name, []) %}
@@ -39,11 +35,16 @@
 {% set db_count = 0 %}
 
 {% if host_list | length == 0 %}
-  <tr><td colspan="10" style="padding:10px; text-align:center;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
+  <tr><td colspan="10" style="padding:8px;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
 {% else %}
 {% for host in host_list %}
   {% set facts = hostvars.get(host, {}) %}
 
+  {# Robust reachable check:
+     - true if ansible_facts exists and non-empty
+     - OR hostname/fqdn present and non-empty string
+     - OR default IPv4 address present and non-empty
+  #}
   {% set af = facts.get('ansible_facts') %}
   {% set ah = facts.get('ansible_hostname') %}
   {% set afq = facts.get('ansible_fqdn') %}
@@ -91,59 +92,38 @@
     {% set db_count = db_count + 1 %}
   {% endif %}
 
-  <tr style="border-bottom:1px solid #e2e8f0; height:40px;">
-    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_hostname', host) }}</td>
-    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
-    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
-    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
+  <tr style="border-bottom:1px solid #e2e8f0;">
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_hostname', host) }}</div></td>
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</div></td>
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</div></td>
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{{ facts.get('ansible_kernel', 'N/A') }}</div></td>
 
-    <td style="padding:6px 8px; vertical-align:middle;">
+    <td style="padding:6px 8px; text-align:right; vertical-align:top;"><div>
       {% if root_mount and root_mount.get('size_total') %}
         {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
       {% else %}
         N/A
       {% endif %}
+    </div></td>
+
+    <td style="padding:6px 8px; text-align:right; vertical-align:top;">
+      <div style="color:{{ var_color }}; font-weight:600;">{{ var_free_gb | round(2) }} GB</div>
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle; color:{{ var_color }}; font-weight:600;">
-      {{ var_free_gb | round(2) }} GB
+    <td style="padding:6px 8px; text-align:right; vertical-align:top;">
+      <div style="color:{{ boot_color }}; font-weight:600;">{{ boot_free_mb | round(1) }} MB</div>
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle; color:{{ boot_color }}; font-weight:600;">
-      {{ boot_free_mb | round(1) }} MB
-    </td>
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div>{% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}</div></td>
 
-    <td style="padding:6px 8px; vertical-align:middle;">
-      {% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}
-    </td>
+    {# Role cell kept on single line to avoid extra whitespace #}
+    <td style="padding:6px 8px; text-align:left; vertical-align:top;"><div style="margin:0; line-height:1.2;">{% if is_db_server %}<b>Database Server</b>{% else %}Application Server{% endif %}</div></td>
 
-    <td style="padding:6px 8px; vertical-align:middle;">
-      {% if is_db_server %}
-        <b>Database Server</b>
-      {% else %}
-        Application Server
-      {% endif %}
-    </td>
-
-    <td style="padding:6px 8px; vertical-align:middle; font-weight:600;">
-      {% if reachable %}
-        <span style="color:#2ecc71;">✅ Live</span>
-      {% else %}
-        <span style="color:#e74c3c;">❌ Unreachable</span>
-      {% endif %}
+    <td style="padding:6px 8px; text-align:center; vertical-align:top; font-weight:600;">
+      <div>{% if reachable %}<span style="color:#2ecc71;">✅ Live</span>{% else %}<span style="color:#e74c3c;">❌ Unreachable</span>{% endif %}</div>
     </td>
   </tr>
 {% endfor %}
 {% endif %}
   </tbody>
 </table>
-
-{% set unreachable = total - live_hosts %}
-
-<p style="margin-top:10px; font-weight:bold;">Summary:</p>
-<ul style="margin-top:0; padding-left:18px; font-size:13px;">
-  <li>Total Hosts: {{ total }}</li>
-  <li>Live Hosts: {{ live_hosts }}</li>
-  <li>Unreachable Hosts: {{ unreachable }}</li>
-  <li>Database Servers: {{ db_count }}</li>
-</ul>
