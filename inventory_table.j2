@@ -113,34 +113,51 @@
       <p>Generated from AAP Job at {{ '%Y-%m-%d %H:%M:%S' | strftime }}</p>
     </header>
 
-    {% for host in groups[group_name] %}
+    {# --- Group and host list safety guards --- #}
+    {% set host_list = group_hosts | default(groups[group_name] | default([])) %}
+    {% if host_list | length == 0 %}
+      <p><strong>No hosts found in group '{{ group_name }}'.</strong></p>
+    {% else %}
+
+    {% for host in host_list %}
       {% set facts = hostvars[host] %}
       {% set mounts = facts.get('ansible_mounts', []) %}
-      {% set var_mount = (mounts | selectattr('mount', '==', '/var') | list | first) %}
-      {% set boot_mount = (mounts | selectattr('mount', '==', '/boot') | list | first) %}
-      {% set root_mount = (mounts | selectattr('mount', '==', '/') | list | first) %}
 
+      {# --- Safe mount lookups --- #}
+      {% set root_mount_list = mounts | selectattr('mount', '==', '/') | list %}
+      {% set root_mount = root_mount_list[0] if root_mount_list | length > 0 else none %}
+
+      {% set var_mount_list = mounts | selectattr('mount', '==', '/var') | list %}
+      {% set var_mount = var_mount_list[0] if var_mount_list | length > 0 else none %}
+
+      {% set boot_mount_list = mounts | selectattr('mount', '==', '/boot') | list %}
+      {% set boot_mount = boot_mount_list[0] if boot_mount_list | length > 0 else none %}
+
+      {# --- Disk space checks --- #}
       {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if (var_mount and var_mount.size_available is defined) else 0 %}
       {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) if (boot_mount and boot_mount.size_available is defined) else 0 %}
       {% set var_class = 'status-ok' if var_free_gb >= 1 else 'status-critical' %}
       {% set boot_class = 'status-ok' if boot_free_mb >= 100 else 'status-critical' %}
 
+      {# --- DB detection --- #}
       {% set services = facts.get('services', {}) %}
       {% set db_keywords = ['mysql', 'mariadb', 'postgres', 'oracle', 'mongodb', 'redis', 'sql'] %}
       {% set db_services = [] %}
-      {% for svc, info in services.items() if info.state is defined and 'running' in info.state %}
-        {% for keyword in db_keywords %}
-          {% if keyword in svc %}
-            {% if svc not in db_services %}
+      {% if services is mapping %}
+        {% for svc, info in services.items() if info.state is defined and 'running' in info.state %}
+          {% for keyword in db_keywords %}
+            {% if keyword in svc and svc not in db_services %}
               {% set _ = db_services.append(svc) %}
             {% endif %}
-          {% endif %}
+          {% endfor %}
         {% endfor %}
-      {% endfor %}
+      {% endif %}
       {% set is_db_server = db_services | length > 0 %}
 
       <section class="host-card">
-        <h2>{{ facts.get('ansible_hostname', host) }} <small>({{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }})</small></h2>
+        <h2>{{ facts.get('ansible_hostname', host) }}
+          <small>({{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }})</small>
+        </h2>
 
         <div class="summary">
           <span class="summary-badge">{{ facts.get('ansible_distribution', 'Unknown OS') }} {{ facts.get('ansible_distribution_version', '') }}</span>
@@ -184,6 +201,7 @@
         </table>
       </section>
     {% endfor %}
+    {% endif %}
   </div>
 </body>
 </html>

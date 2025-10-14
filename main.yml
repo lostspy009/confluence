@@ -48,9 +48,10 @@
         existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Determine safe target group
+    - name: Ensure safe group name and non-empty list
       set_fact:
         safe_group_name: "{{ target_group if (target_group in groups) else 'all' }}"
+        host_list: "{{ groups[target_group] | default(groups['all']) | default([]) }}"
       run_once: true
 
     - name: Build HTML table with inventory facts
@@ -58,6 +59,7 @@
         table_html: "{{ lookup('template', 'inventory_table.j2') }}"
       vars:
         group_name: "{{ safe_group_name }}"
+        group_hosts: "{{ host_list }}"
       run_once: true
 
     - name: Prepare Confluence page body
