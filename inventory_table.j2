@@ -2,21 +2,30 @@
 <table>
   <tr>
     <th>Hostname</th><th>IP Address</th><th>Comment</th>
-    <th>Kernel</th><th>OS Version</th><th>/ Size</th>
-    <th>/var Size</th><th>/boot Size</th><th>Status</th>
+    <th>Kernel</th><th>OS Version</th><th>/ Size (GB)</th>
+    <th>/var Size (GB)</th><th>/boot Size (GB)</th><th>Status</th>
   </tr>
   {% for host in groups[group_name] %}
   <tr>
-    <td>{{ hostvars[host].ansible_hostname }}</td>
-    <td>{{ hostvars[host].ansible_default_ipv4.address }}</td>
+    <td>{{ hostvars[host].ansible_hostname | default(host) }}</td>
+    <td>{{ hostvars[host].ansible_default_ipv4.address | default('N/A') }}</td>
     <td>{{ hostvars[host].purpose | default('General') }}</td>
-    <td>{{ hostvars[host].ansible_kernel }}</td>
-    <td>{{ hostvars[host].ansible_distribution }} {{ hostvars[host].ansible_distribution_version }}</td>
-    <td>{{ (hostvars[host].ansible_facts.mounts | selectattr('mount','equalto','/') | map(attribute='size_total') | first | int / 1024 / 1024 / 1024) | round(1) }} GB</td>
-    <td>{{ (hostvars[host].ansible_facts.mounts | selectattr('mount','equalto','/var') | map(attribute='size_total') | first | int / 1024 / 1024 / 1024) | round(1) | default('N/A') }} GB</td>
-    <td>{{ (hostvars[host].ansible_facts.mounts | selectattr('mount','equalto','/boot') | map(attribute='size_total') | first | int / 1024 / 1024 / 1024) | round(1) | default('N/A') }} GB</td>
+    <td>{{ hostvars[host].ansible_kernel | default('N/A') }}</td>
+    <td>{{ hostvars[host].ansible_distribution | default('') }} {{ hostvars[host].ansible_distribution_version | default('') }}</td>
+    <td>{{ (hostvars[host].ansible_facts.mounts
+             | selectattr('mount','equalto','/')
+             | map(attribute='size_total')
+             | list | first | default(0)) | int / 1024 / 1024 / 1024 | round(1) }}</td>
+    <td>{{ (hostvars[host].ansible_facts.mounts
+             | selectattr('mount','equalto','/var')
+             | map(attribute='size_total')
+             | list | first | default(0)) | int / 1024 / 1024 / 1024 | round(1) }}</td>
+    <td>{{ (hostvars[host].ansible_facts.mounts
+             | selectattr('mount','equalto','/boot')
+             | map(attribute='size_total')
+             | list | first | default(0)) | int / 1024 / 1024 / 1024 | round(1) }}</td>
     <td>✅ Live</td>
   </tr>
   {% endfor %}
 </table>
-<p>Last updated on {{ ansible_date_time.date }} at {{ ansible_date_time.time }} (via AAP)</p>
+<p>Last updated from AAP job at {{ lookup('pipe', 'date +%Y-%m-%d %H:%M:%S') }}</p>
