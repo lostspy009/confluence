@@ -55,7 +55,7 @@
         group_name: "{{ target_group }}"
       run_once: true
 
-    - name: Prepare Confluence page body JSON
+    - name: Prepare Confluence page body
       set_fact:
         confluence_body: >-
           {{
@@ -73,19 +73,21 @@
             | combine({
                 "id": existing_page_id,
                 "version": {"number": (existing_version | default(0) | int) + 1}
-              }) if existing_page_id | length > 0 else {
-              "type": "page",
-              "title": page_title,
-              "space": {"key": confluence_space},
-              "body": {
-                "storage": {
-                  "value": table_html,
-                  "representation": "storage"
+              }) if existing_page_id | length > 0 else
+              {
+                "type": "page",
+                "title": page_title,
+                "space": {"key": confluence_space},
+                "body": {
+                  "storage": {
+                    "value": table_html,
+                    "representation": "storage"
+                  }
                 }
               }
-            }
           }}
-    - name: Create or update Confluence page
+
+    - name: Create or update Confluence page (final)
       ansible.builtin.uri:
         url: >-
           {{ confluence_base_url }}/rest/api/content{{ '/' + existing_page_id if existing_page_id | length > 0 else '' }}
@@ -93,11 +95,9 @@
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
         force_basic_auth: yes
+        headers:
+          Content-Type: "application/json"
         body_format: json
         body: "{{ confluence_body }}"
         status_code: [200, 201]
       register: confluence_update
-
-    - name: Debug result
-      ansible.builtin.debug:
-        msg: "Page successfully {{ 'updated' if existing_page_id is defined else 'created' }} at {{ confluence_update.json._links.webui }}"
