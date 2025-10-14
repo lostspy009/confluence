@@ -27,9 +27,9 @@
         msg: "Confluence credentials not set correctly in AAP"
       when: confluence_user == "" or confluence_token == ""
 
-    - name: Check if Confluence page already exists
+    - name: Check if Confluence page already exists (with version info)
       ansible.builtin.uri:
-        url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title | urlencode }}&spaceKey={{ confluence_space }}"
+        url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title | urlencode }}&spaceKey={{ confluence_space }}&expand=version"
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
         force_basic_auth: yes
@@ -37,16 +37,16 @@
         return_content: yes
       register: confluence_page_check
 
-    - name: Initialize version and page ID defaults
+    - name: Initialize defaults for page info
       set_fact:
         existing_page_id: ""
         existing_version: 0
 
-    - name: Set page ID and version if found
-      set_fact:
-        existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
-        existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
+    - name: Extract page ID and version if the page exists
       when: confluence_page_check.json.results | length > 0
+      set_fact:
+        existing_page_id: "{{ confluence_page_check.json.results[0].id }}"
+        existing_version: "{{ confluence_page_check.json.results[0].version.number }}"
 
     - name: Determine safe target group
       set_fact:
