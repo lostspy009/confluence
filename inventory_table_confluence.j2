@@ -1,4 +1,4 @@
-{# inventory_table_confluence.j2 — Confluence highlight-compatible color scheme #}
+{# inventory_table_confluence.j2 — Enhanced pastel color style + fixed alignment #}
 <h1 style="margin-bottom:6px; text-align:center;">
   {{ (group_name | replace('_',' ') | title) if group_name is defined else 'All Servers' }} Inventory Report
 </h1>
@@ -16,7 +16,7 @@
     <col style="width:8%;">
     <col style="width:8%;">
     <col style="width:10%;">
-    <col style="width:8%;">
+    <col style="width:10%;">
     <col style="width:6%;">
   </colgroup>
   <tbody>
@@ -71,9 +71,11 @@
   {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
   {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) if boot_mount and boot_mount.get('size_available') else 0 %}
 
-  {# Choose highlight classes Confluence recognizes #}
-  {% set var_class = 'highlight-green' if var_free_gb >= 1 else 'highlight-red' %}
-  {% set boot_class = 'highlight-green' if boot_free_mb >= 100 else 'highlight-red' %}
+  {# Use soft pastel backgrounds (still Confluence-safe) #}
+  {% set var_bg = '#d1fae5' if var_free_gb >= 1 else '#fee2e2' %}
+  {% set var_fg = '#065f46' if var_free_gb >= 1 else '#991b1b' %}
+  {% set boot_bg = '#d1fae5' if boot_free_mb >= 100 else '#fee2e2' %}
+  {% set boot_fg = '#065f46' if boot_free_mb >= 100 else '#991b1b' %}
 
   {% set services = facts.get('services', {}) %}
   {% set db_keywords = ['mysql','mariadb','postgres','oracle','mongodb','redis','sql'] %}
@@ -94,12 +96,12 @@
     {% set db_count = db_count + 1 %}
   {% endif %}
 
-  <tr style="border-bottom:1px solid #e2e8f0; height:44px;">
-    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_hostname', host) }}</td>
-    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
-    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
-    <td style="padding:6px 8px; vertical-align:middle;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
-    <td style="padding:6px 8px; vertical-align:middle;">
+  <tr style="border-bottom:1px solid #e2e8f0; height:48px;">
+    <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_hostname', host) }}</td>
+    <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
+    <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
+    <td style="padding:6px 8px; vertical-align:top;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
+    <td style="padding:6px 8px; vertical-align:top;">
       {% if root_mount and root_mount.get('size_total') %}
         {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
       {% else %}
@@ -107,21 +109,25 @@
       {% endif %}
     </td>
 
-    {# Use Confluence highlight class for /var #}
-    <td class="{{ var_class }}" data-highlight-colour="{{ 'green' if var_free_gb >= 1 else 'red' }}" style="padding:6px 8px; vertical-align:middle;">
-      {{ var_free_gb | round(2) }} GB
+    <td style="padding:6px 8px; vertical-align:top;">
+      <div style="display:inline-block; min-width:70px; background-color:{{ var_bg }};
+                  color:{{ var_fg }}; padding:4px 8px; border-radius:8px; font-weight:600;">
+        {{ var_free_gb | round(2) }} GB
+      </div>
     </td>
 
-    {# Use Confluence highlight class for /boot #}
-    <td class="{{ boot_class }}" data-highlight-colour="{{ 'green' if boot_free_mb >= 100 else 'red' }}" style="padding:6px 8px; vertical-align:middle;">
-      {{ boot_free_mb | round(1) }} MB
+    <td style="padding:6px 8px; vertical-align:top;">
+      <div style="display:inline-block; min-width:70px; background-color:{{ boot_bg }};
+                  color:{{ boot_fg }}; padding:4px 8px; border-radius:8px; font-weight:600;">
+        {{ boot_free_mb | round(1) }} MB
+      </div>
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle;">
+    <td style="padding:6px 8px; vertical-align:top;">
       {% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle;">
+    <td style="padding:6px 8px; vertical-align:top;">
       {% if is_db_server %}
         <b>Database Server</b>
       {% else %}
@@ -129,7 +135,7 @@
       {% endif %}
     </td>
 
-    <td style="padding:6px 8px; vertical-align:middle; font-weight:600;">
+    <td style="padding:6px 8px; vertical-align:top; font-weight:600;">
       {% if reachable %}
         <span style="color:#16a34a;">✅ Live</span>
       {% else %}
