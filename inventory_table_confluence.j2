@@ -1,4 +1,4 @@
-{# inventory_table_confluence.j2 — Confluence-safe color-coded version #}
+{# inventory_table_confluence.j2 — Confluence-safe color-coded version (final spacing fix) #}
 
 <h1 style="margin-bottom:6px; text-align:center;">
   {{ (group_name | replace('_',' ') | title) if group_name is defined else 'All Servers' }} Inventory Report
@@ -112,13 +112,7 @@
 
     <td>{% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}</td>
 
-    <td style="font-weight:600; vertical-align:top; text-align:center;">
-      {% if is_db_server %}
-        Database Server
-      {% else %}
-        Application Server
-      {% endif %}
-    </td>
+    <td style="font-weight:600; vertical-align:top; text-align:center;">{{ 'Database Server' if is_db_server else 'Application Server' }}</td>
 
     <td>
       {% if reachable %}
@@ -132,12 +126,3 @@
 {% endif %}
   </tbody>
 </table>
-
-{% set unreachable = total - live_hosts %}
-<p style="margin-top:10px; font-weight:bold; text-align:center;">Summary:</p>
-<ul style="margin-top:0; padding-left:18px; font-size:13px;">
-  <li>Total Hosts: {{ total }}</li>
-  <li>Live Hosts: {{ live_hosts }}</li>
-  <li>Unreachable Hosts: {{ unreachable }}</li>
-  <li>Database Servers: {{ db_count }}</li>
-</ul>
