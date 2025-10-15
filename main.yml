@@ -2,6 +2,7 @@
 - name: Check host reachability and gather facts
   hosts: patch_seso_2025
   gather_facts: false
+  ignore_errors: true
   tasks:
     - name: Ping test
       ansible.builtin.ping:
