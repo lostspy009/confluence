@@ -16,6 +16,7 @@
 - name: Gather facts from reachable hosts
   hosts: patch_seso_2025
   gather_facts: yes
+  ignore_unreachable: true
   tasks:
     - name: Skip unreachable hosts
       ansible.builtin.meta: end_host
@@ -62,35 +63,29 @@
         existing_page_id: "{{ existing_page_id | default('') }}"
         existing_version: "{{ existing_version | default(0) }}"
 
-    - name: Build table for Confluence
-      ansible.builtin.set_fact:
-        table_html: "{{ lookup('template', 'inventory_table_confluence.j2') }}"
-      vars:
-        group_name: "{{ safe_group_name }}"
-
     - name: Prepare body for update
       ansible.builtin.set_fact:
         confluence_body: >-
           {{
             {
-              "id": existing_page_id,
               "type": "page",
               "title": page_title,
               "space": {"key": confluence_space},
-              "version": {"number": (existing_version | int) + 1},
               "body": {
                 "storage": {
                   "value": table_html,
                   "representation": "storage"
                 }
-              }
+              },
+              "version": {"number": (existing_version | int) + 1}
             }
           }}
 
-    - name: Update existing Confluence page
+    - name: Create or update Confluence page
       ansible.builtin.uri:
-        url: "{{ confluence_base_url }}/rest/api/content/{{ existing_page_id }}"
-        method: PUT
+        url: >-
+          {{ confluence_base_url }}/rest/api/content{{ '/' + existing_page_id if existing_page_id | length > 0 else '' }}
+        method: "{{ 'PUT' if existing_page_id | length > 0 else 'POST' }}"
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
         force_basic_auth: yes
@@ -99,4 +94,5 @@
         body_format: json
         body: "{{ confluence_body }}"
         status_code: [200, 201]
-      when: existing_page_id | length > 0
+      ignore_errors: true
+      failed_when: false
