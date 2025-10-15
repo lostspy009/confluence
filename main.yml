@@ -2,6 +2,8 @@
 - name: Check reachability of all target servers
   hosts: patch_seso_2025
   gather_facts: false
+  ignore_errors: true
+  ignore_unreachable: true
   tasks:
     - name: Ping test
       ansible.builtin.ping:
@@ -15,6 +17,7 @@
 - name: Gather facts only from reachable hosts
   hosts: patch_seso_2025
   gather_facts: yes
+  ignore_unreachable: true
   tasks:
     - name: Skip unreachable hosts
       ansible.builtin.meta: end_host
@@ -27,6 +30,7 @@
 - name: Publish Inventory to Confluence Cloud
   hosts: localhost
   gather_facts: false
+  ignore_unreachable: true
   vars:
     confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
     confluence_space: "aap"
