@@ -21,6 +21,7 @@
     - name: Skip unreachable hosts
       ansible.builtin.meta: end_host
       when: hostvars[inventory_hostname].reachable_status == 'unreachable'
+
 - name: Update Confluence page with latest inventory
   hosts: localhost
   gather_facts: false
@@ -38,12 +39,17 @@
 
     - name: Check if Confluence page exists
       ansible.builtin.uri:
-        url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title | urlencode }}&spaceKey={{ confluence_space }}&expand=body.storage,version"
+        url: "{{ confluence_base_url }}/rest/api/content"
+        method: GET
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
-        force_basic_auth: yes
-        method: GET
-        return_content: yes
+        force_basic_auth: true
+        return_content: true
+        status_code: [200, 201]
+        params:
+          title: "{{ page_title }}"
+          spaceKey: "{{ confluence_space }}"
+          expand: "body.storage,version"
       register: confluence_page_check
 
     - name: Extract existing content if available
@@ -64,7 +70,7 @@
       ansible.builtin.set_fact:
         updated_content: >-
           {{
-            existing_content
+            (existing_content | default(''))
             | regex_replace(
                 '<!-- START: ' ~ safe_group_name ~ ' -->[\\s\\S]*?<!-- END: ' ~ safe_group_name ~ ' -->',
                 new_section_html
@@ -74,7 +80,7 @@
 
     - name: Append section if not found (first-time addition)
       ansible.builtin.set_fact:
-        updated_content: "{{ existing_content + '\n<hr/>\n' + new_section_html }}"
+        updated_content: "{{ (existing_content | default('')) + '\n<hr/>\n' + new_section_html }}"
       when: existing_content is not search('<!-- START: ' ~ safe_group_name ~ ' -->')
 
     - name: Prepare Confluence update body
@@ -98,11 +104,11 @@
 
     - name: Create Confluence page if not exists
       ansible.builtin.uri:
-        url: "{{ confluence_base_url }}/rest/api/content/"
+        url: "{{ confluence_base_url }}/rest/api/content"
         method: POST
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
-        force_basic_auth: yes
+        force_basic_auth: true
         headers:
           Content-Type: "application/json"
         body_format: json
@@ -131,7 +137,7 @@
         method: PUT
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
-        force_basic_auth: yes
+        force_basic_auth: true
         headers:
           Content-Type: "application/json"
         body_format: json
