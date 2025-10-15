@@ -1,15 +1,12 @@
 {# -------------------------------------------------------------------------
   inventory_table_confluence.j2
-  Purpose : Generate clean, Confluence-friendly HTML table
-  Features:
-    - Shows ✅ Live / ❌ Unreachable status with proper alignment
-    - Leaves Role empty for unreachable hosts
-    - Lists unreachable hosts separately at the bottom
-    - Consistent spacing, fixed table layout for Confluence
+  Simplified version — no DB service or Role columns.
+  Keeps clean host, OS, kernel, disk info with Live/Unreachable status.
   ------------------------------------------------------------------------- #}
 
+{% set display_group = group_name | default(target_group) | default('all') %}
 <h1 style="margin-bottom:6px; text-align:center;">
-  {{ (group_name | replace('_',' ') | title) if group_name is defined else 'All Servers' }} Inventory Report
+  {{ (display_group | replace('_',' ') | title) }} Inventory Report
 </h1>
 <p style="font-size:12px; color:#555; margin-top:0; text-align:center;">
   Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}
@@ -17,16 +14,13 @@
 
 <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:center; table-layout:fixed;">
   <colgroup>
-    <col style="width:13%;">
-    <col style="width:12%;">
+    <col style="width:18%;">
     <col style="width:15%;">
-    <col style="width:11%;">
-    <col style="width:9%;">
-    <col style="width:8%;">
-    <col style="width:8%;">
+    <col style="width:20%;">
+    <col style="width:15%;">
     <col style="width:10%;">
     <col style="width:10%;">
-    <col style="width:12%;">   {# Status column widened #}
+    <col style="width:12%;">   {# Wider Status column #}
   </colgroup>
   <tbody>
     <tr style="background-color:#f4f5f7;">
@@ -36,98 +30,50 @@
       <th style="padding:8px;">Kernel</th>
       <th style="padding:8px;">Root Disk</th>
       <th style="padding:8px;">/var</th>
-      <th style="padding:8px;">/boot</th>
-      <th style="padding:8px;">DB Services</th>
-      <th style="padding:8px;">Role</th>
       <th style="padding:8px;">Status</th>
     </tr>
 
 {% set host_list = groups.get(group_name, []) %}
 {% set total = host_list | length %}
 {% set live_hosts = 0 %}
-{% set db_count = 0 %}
 
 {% if host_list | length == 0 %}
-  <tr><td colspan="10" style="padding:10px; text-align:center;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
+  <tr><td colspan="7" style="padding:10px; text-align:center;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
 {% else %}
 {% for host in host_list %}
   {% set facts = hostvars.get(host, {}) %}
-
-  {# Determine reachability #}
-  {% set reachable = (
-       (facts.get('ansible_hostname')) or
-       (facts.get('ansible_fqdn')) or
-       (facts.get('ansible_default_ipv4', {}).get('address'))
-     ) %}
+  {% set reachable = facts.get('ansible_default_ipv4', {}).get('address') is defined %}
   {% if reachable %}
     {% set live_hosts = live_hosts + 1 %}
   {% endif %}
 
-  {# Disk mount extraction #}
+  {# Disk mounts #}
   {% set mounts = facts.get('ansible_mounts', []) | default([]) %}
   {% set root_mount = (mounts | selectattr('mount', 'equalto', '/') | list | first | default({})) %}
   {% set var_mount  = (mounts | selectattr('mount', 'equalto', '/var') | list | first | default({})) %}
-  {% set boot_mount = (mounts | selectattr('mount', 'equalto', '/boot') | list | first | default({})) %}
-
   {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
-  {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) if boot_mount and boot_mount.get('size_available') else 0 %}
-
   {% set var_class = 'highlight-green' if var_free_gb >= 1 else 'highlight-red' %}
-  {% set boot_class = 'highlight-green' if boot_free_mb >= 100 else 'highlight-red' %}
+  {% set root_total_gb = (root_mount.size_total / 1024 / 1024 / 1024) if root_mount and root_mount.get('size_total') else 0 %}
 
-  {# Detect database services #}
-  {% set services = facts.get('services', {}) %}
-  {% set db_keywords = ['mysql','mariadb','postgres','oracle','mongodb','redis','sql'] %}
-  {% set db_services = [] %}
-  {% if services is mapping %}
-    {% for svc, info in services.items() %}
-      {% if info is mapping and info.get('state') and 'running' in info.get('state') %}
-        {% for keyword in db_keywords %}
-          {% if keyword in svc and svc not in db_services %}
-            {% set _ = db_services.append(svc) %}
-          {% endif %}
-        {% endfor %}
-      {% endif %}
-    {% endfor %}
-  {% endif %}
-  {% set is_db_server = db_services | length > 0 %}
-  {% if is_db_server %}
-    {% set db_count = db_count + 1 %}
-  {% endif %}
+  <tr style="border-bottom:1px solid #e2e8f0; height:42px; vertical-align:top;">
+    <td style="vertical-align:top;">{{ facts.get('ansible_hostname', host) }}</td>
+    <td style="vertical-align:top;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
+    <td style="vertical-align:top;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
+    <td style="vertical-align:top;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
 
-  <tr style="border-bottom:1px solid #e2e8f0; height:46px;">
-    <td>{{ facts.get('ansible_hostname', host) }}</td>
-    <td>{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
-    <td>{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
-    <td>{{ facts.get('ansible_kernel', 'N/A') }}</td>
-
-    <td>
-      {% if root_mount and root_mount.get('size_total') %}
-        {{ (root_mount.size_total / 1024 / 1024 / 1024) | round(1) }} GB
+    <td style="vertical-align:top;">
+      {% if root_total_gb %}
+        {{ root_total_gb | round(1) }} GB
       {% else %}
         N/A
       {% endif %}
     </td>
 
-    <td class="{{ var_class }}" data-highlight-colour="{{ 'green' if var_free_gb >= 1 else 'red' }}">
+    <td style="vertical-align:top;" class="{{ var_class }}" data-highlight-colour="{{ 'green' if var_free_gb >= 1 else 'red' }}">
       {{ var_free_gb | round(2) }} GB
     </td>
 
-    <td class="{{ boot_class }}" data-highlight-colour="{{ 'green' if boot_free_mb >= 100 else 'red' }}">
-      {{ boot_free_mb | round(1) }} MB
-    </td>
-
-    <td>{% if db_services %}{{ db_services | join(', ') }}{% else %}-{% endif %}</td>
-
-    <td style="font-weight:600; text-align:center; vertical-align:top;">
-      {% if reachable %}
-        {{ 'Database Server' if is_db_server else 'Application Server' }}
-      {% else %}
-        —
-      {% endif %}
-    </td>
-
-    <td style="font-weight:600; text-align:center; vertical-align:middle; white-space:nowrap; min-width:120px; padding:6px;">
+    <td style="font-weight:600; text-align:center; vertical-align:middle; white-space:nowrap; min-width:140px; padding:6px;">
       {% if reachable %}
         <span style="color:green;">✅ Live</span>
       {% else %}
@@ -146,10 +92,9 @@
   <li>Total Hosts: {{ total }}</li>
   <li>Live Hosts: {{ live_hosts }}</li>
   <li>Unreachable Hosts: {{ unreachable }}</li>
-  <li>Database Servers: {{ db_count }}</li>
 </ul>
 
-{# ----------------------- Unreachable hosts table at bottom ----------------------- #}
+{# ----------------------- Unreachable hosts at bottom ----------------------- #}
 {% set unreachable_hosts = [] %}
 {% for host in host_list %}
   {% if hostvars.get(host, {}).get('reachable_status') == 'unreachable' %}
