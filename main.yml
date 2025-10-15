@@ -61,6 +61,8 @@
           <!-- START: {{ safe_group_name }} -->
           {{ lookup('template', 'inventory_table_confluence.j2') | trim }}
           <!-- END: {{ safe_group_name }} -->
+      vars:
+        group_name: "{{ safe_group_name }}"
 
     - name: Replace existing section for this group if found
       ansible.builtin.set_fact:
