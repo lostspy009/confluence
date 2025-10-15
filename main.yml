@@ -50,11 +50,16 @@
         return_content: yes
       register: confluence_page_check
 
-    - name: Set page ID and version
+    - name: Set page ID and version if found
       ansible.builtin.set_fact:
         existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
         existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
       when: confluence_page_check.json.results | length > 0
+
+    - name: Ensure defaults for Confluence page facts
+      ansible.builtin.set_fact:
+        existing_page_id: "{{ existing_page_id | default('') }}"
+        existing_version: "{{ existing_version | default(0) }}"
 
     - name: Build table for Confluence
       ansible.builtin.set_fact:
