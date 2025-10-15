@@ -1,51 +1,43 @@
 ---
-- name: Check reachability of all target servers
+- name: Check host reachability and gather facts
   hosts: patch_seso_2025
   gather_facts: false
-  ignore_errors: true
-  ignore_unreachable: true
   tasks:
     - name: Ping test
       ansible.builtin.ping:
       register: ping_result
       ignore_errors: true
 
-    - name: Set host fact for reachability
+    - name: Set reachability status
       ansible.builtin.set_fact:
         reachable_status: "{{ 'reachable' if ping_result.ping is defined else 'unreachable' }}"
 
-- name: Gather facts only from reachable hosts
+- name: Gather facts from reachable hosts
   hosts: patch_seso_2025
   gather_facts: yes
-  ignore_unreachable: true
   tasks:
     - name: Skip unreachable hosts
       ansible.builtin.meta: end_host
       when: hostvars[inventory_hostname].reachable_status == 'unreachable'
 
-    - name: Debug gathered facts
-      ansible.builtin.debug:
-        msg: "Facts gathered for {{ inventory_hostname }}"
-
-- name: Publish Inventory to Confluence Cloud
+- name: Update Confluence page with latest inventory
   hosts: localhost
   gather_facts: false
-  ignore_unreachable: true
   vars:
     confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
     confluence_space: "aap"
-    page_title: "AAP Inventory - {{ target_group | default('all') }}"
-    target_group: patch_seso_2025
+    page_title: "AAP Inventory - patch_seso_2025"
+    safe_group_name: "patch_seso_2025"
   tasks:
     - name: Load Confluence credentials from environment
-      set_fact:
+      ansible.builtin.set_fact:
         confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
         confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
 
-    - name: Validate Confluence credentials
+    - name: Validate credentials
       ansible.builtin.fail:
         msg: "Confluence credentials not set correctly"
-      when: confluence_user == "" or confluence_token == ""
+      when: confluence_user | length == 0 or confluence_token | length == 0
 
     - name: Check if Confluence page exists
       ansible.builtin.uri:
@@ -53,62 +45,46 @@
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
         force_basic_auth: yes
+        method: GET
         status_code: 200
         return_content: yes
       register: confluence_page_check
 
-    - name: Set page ID and version if found
-      set_fact:
+    - name: Set page ID and version
+      ansible.builtin.set_fact:
         existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
         existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Build Confluence Storage table with inventory data
-      set_fact:
+    - name: Build table for Confluence
+      ansible.builtin.set_fact:
         table_html: "{{ lookup('template', 'inventory_table_confluence.j2') }}"
       vars:
-        group_name: "{{ target_group }}"
-      run_once: true
+        group_name: "{{ safe_group_name }}"
 
-    - name: Gather unreachable hosts
-      set_fact:
-        unreachable_hosts: >-
-          {{
-            groups[target_group]
-            | select('in', hostvars.keys())
-            | select('reject', 'equalto', None)
-            | select('selectattr', 'reachable_status', 'equalto', 'unreachable')
-            | list
-          }}
-      vars:
-        target_group: "{{ target_group }}"
-      run_once: true
-      delegate_to: localhost
-      ignore_errors: true
-
-    - name: Prepare Confluence body (storage format)
-      set_fact:
+    - name: Prepare body for update
+      ansible.builtin.set_fact:
         confluence_body: >-
           {{
             {
+              "id": existing_page_id,
               "type": "page",
               "title": page_title,
               "space": {"key": confluence_space},
+              "version": {"number": (existing_version | int) + 1},
               "body": {
                 "storage": {
                   "value": table_html,
                   "representation": "storage"
                 }
-              },
-              "version": {"number": (existing_version | int) + 1}
+              }
             }
           }}
 
-    - name: Create or update Confluence page
+    - name: Update existing Confluence page
       ansible.builtin.uri:
-        url: >-
-          {{ confluence_base_url }}/rest/api/content{{ '/' + existing_page_id if existing_page_id | length > 0 else '' }}
-        method: "{{ 'PUT' if existing_page_id | length > 0 else 'POST' }}"
+        url: "{{ confluence_base_url }}/rest/api/content/{{ existing_page_id }}"
+        method: PUT
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
         force_basic_auth: yes
@@ -117,3 +93,4 @@
         body_format: json
         body: "{{ confluence_body }}"
         status_code: [200, 201]
+      when: existing_page_id | length > 0
