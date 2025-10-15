@@ -39,17 +39,17 @@
 
     - name: Check if Confluence page exists
       ansible.builtin.uri:
-        url: "{{ confluence_base_url }}/rest/api/content"
+        url: >-
+          {{ confluence_base_url }}/rest/api/content
+          ?title={{ page_title | urlencode }}
+          &spaceKey={{ confluence_space }}
+          &expand=body.storage,version
         method: GET
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
         force_basic_auth: true
         return_content: true
         status_code: [200, 201]
-        params:
-          title: "{{ page_title }}"
-          spaceKey: "{{ confluence_space }}"
-          expand: "body.storage,version"
       register: confluence_page_check
 
     - name: Extract existing content if available
