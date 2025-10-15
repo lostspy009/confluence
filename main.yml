@@ -48,7 +48,7 @@
         status_code: [200, 201]
       register: confluence_page_check
 
-    - name: Extract existing content if available
+    - name: Extract existing page data
       ansible.builtin.set_fact:
         existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
         existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
@@ -64,24 +64,38 @@
       vars:
         group_name: "{{ safe_group_name }}"
 
-    - name: Replace existing section for this group if found
+    - name: Normalize existing_content for matching
+      ansible.builtin.set_fact:
+        normalized_existing: >-
+          {{
+            (existing_content | default(''))
+            | regex_replace('<!--\\s*START:', '<!-- START:')
+            | regex_replace('-->\\s*<!--', '--><!--')
+          }}
+
+    - name: Replace if existing marker found
+      ansible.builtin.set_fact:
+        updated_content: >-
+          {{
+            normalized_existing
+            | regex_replace(
+                '<!-- START:\\s*' ~ safe_group_name ~ '\\s*-->[\\s\\S]*?<!-- END:\\s*' ~ safe_group_name ~ '\\s*-->',
+                new_section_html
+              )
+          }}
+      when: normalized_existing is search('<!-- START:\\s*' ~ safe_group_name)
+
+    - name: Append if no existing section
       ansible.builtin.set_fact:
         updated_content: >-
           {{
             (existing_content | default(''))
-            | regex_replace(
-                '<!--\\s*START:\\s*' ~ safe_group_name ~ '\\s*-->[\\s\\S]*?<!--\\s*END:\\s*' ~ safe_group_name ~ '\\s*-->',
-                new_section_html
-              )
+            + '\n<hr/>\n'
+            + new_section_html
           }}
-      when: "existing_content is search('START:\\s*' ~ safe_group_name)"
+      when: normalized_existing is not search('<!-- START:\\s*' ~ safe_group_name)
 
-    - name: Append section if not found (first-time addition)
-      ansible.builtin.set_fact:
-        updated_content: "{{ (existing_content | default('')) + '\n<hr/>\n' + new_section_html }}"
-      when: "existing_content is not search('<!-- START: ' ~ safe_group_name ~ ' -->')"
-
-    - name: Prepare Confluence update body
+    - name: Prepare Confluence body
       ansible.builtin.set_fact:
         confluence_body: >-
           {{
@@ -100,7 +114,7 @@
             }
           }}
 
-    - name: Create Confluence page if not exists
+    - name: Create page if missing
       ansible.builtin.uri:
         url: "{{ confluence_base_url }}/rest/api/content"
         method: POST
@@ -129,7 +143,7 @@
       ignore_errors: true
       failed_when: false
 
-    - name: Update Confluence page (replace mode)
+    - name: Update (replace) Confluence page
       ansible.builtin.uri:
         url: "{{ confluence_base_url }}/rest/api/content/{{ existing_page_id }}"
         method: PUT
