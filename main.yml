@@ -1,11 +1,28 @@
 ---
-- name: Gather facts from all hosts
+- name: Check reachability of all target servers
+  hosts: patch_seso_2025
+  gather_facts: false
+  tasks:
+    - name: Ping test
+      ansible.builtin.ping:
+      register: ping_result
+      ignore_errors: true
+
+    - name: Set host fact for reachability
+      ansible.builtin.set_fact:
+        reachable_status: "{{ 'reachable' if ping_result.ping is defined else 'unreachable' }}"
+
+- name: Gather facts only from reachable hosts
   hosts: patch_seso_2025
   gather_facts: yes
   tasks:
-    - name: Debug host facts
+    - name: Skip unreachable hosts
+      ansible.builtin.meta: end_host
+      when: hostvars[inventory_hostname].reachable_status == 'unreachable'
+
+    - name: Debug gathered facts
       ansible.builtin.debug:
-        msg: "Gathered facts for {{ inventory_hostname }}"
+        msg: "Facts gathered for {{ inventory_hostname }}"
 
 - name: Publish Inventory to Confluence Cloud
   hosts: localhost
@@ -14,7 +31,7 @@
     confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
     confluence_space: "aap"
     page_title: "AAP Inventory - {{ target_group | default('all') }}"
-    target_group: all
+    target_group: patch_seso_2025
   tasks:
     - name: Load Confluence credentials from environment
       set_fact:
@@ -42,16 +59,16 @@
         existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Determine safe target group
-      set_fact:
-        safe_group_name: "{{ target_group if (target_group in groups) else 'all' }}"
-      run_once: true
-
     - name: Build Confluence Storage table with inventory data
       set_fact:
         table_html: "{{ lookup('template', 'inventory_table_confluence.j2') }}"
       vars:
-        group_name: "{{ safe_group_name }}"
+        group_name: "{{ target_group }}"
+      run_once: true
+
+    - name: Gather unreachable hosts
+      set_fact:
+        unreachable_hosts: "{{ groups[target_group] | map('extract', hostvars, 'reachable_status') | list }}"
       run_once: true
 
     - name: Prepare Confluence body (storage format)

@@ -131,3 +131,19 @@
   <li>Unreachable Hosts: {{ unreachable }}</li>
   <li>Database Servers: {{ db_count }}</li>
 </ul>
+
+{% set unreachable_hosts = [] %}
+{% for host in host_list %}
+  {% if hostvars.get(host, {}).get('reachable_status') == 'unreachable' %}
+    {% set _ = unreachable_hosts.append(host) %}
+  {% endif %}
+{% endfor %}
+
+{% if unreachable_hosts | length > 0 %}
+  <p style="margin-top:10px; font-weight:bold; text-align:center;">Unreachable Hosts:</p>
+  <ul style="margin-top:0; padding-left:18px; font-size:13px;">
+  {% for host in unreachable_hosts %}
+    <li>{{ host }}</li>
+  {% endfor %}
+  </ul>
+{% endif %}
