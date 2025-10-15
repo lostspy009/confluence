@@ -68,8 +68,19 @@
 
     - name: Gather unreachable hosts
       set_fact:
-        unreachable_hosts: "{{ groups[target_group] | map('extract', hostvars, 'reachable_status') | list }}"
+        unreachable_hosts: >-
+          {{
+            groups[target_group]
+            | select('in', hostvars.keys())
+            | select('reject', 'equalto', None)
+            | select('selectattr', 'reachable_status', 'equalto', 'unreachable')
+            | list
+          }}
+      vars:
+        target_group: "{{ target_group }}"
       run_once: true
+      delegate_to: localhost
+      ignore_errors: true
 
     - name: Prepare Confluence body (storage format)
       set_fact:
