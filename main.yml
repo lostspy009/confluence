@@ -30,6 +30,7 @@
     confluence_space: "aap"
     page_title: "AAP Inventory - patch_seso_2025"
     safe_group_name: "patch_seso_2025"
+
   tasks:
     - name: Load Confluence credentials from environment
       ansible.builtin.set_fact:
@@ -62,6 +63,13 @@
       ansible.builtin.set_fact:
         existing_page_id: "{{ existing_page_id | default('') }}"
         existing_version: "{{ existing_version | default(0) }}"
+
+    - name: Build table for Confluence
+      ansible.builtin.set_fact:
+        table_html: "{{ lookup('template', 'inventory_table_confluence.j2') }}"
+      vars:
+        group_name: "{{ safe_group_name | default('all') }}"
+      run_once: true
 
     - name: Prepare body for update
       ansible.builtin.set_fact:
