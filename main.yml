@@ -21,7 +21,6 @@
     - name: Skip unreachable hosts
       ansible.builtin.meta: end_host
       when: hostvars[inventory_hostname].reachable_status == 'unreachable'
-
 - name: Update Confluence page with latest inventory
   hosts: localhost
   gather_facts: false
@@ -49,21 +48,28 @@
 
     - name: Extract existing content if available
       ansible.builtin.set_fact:
-        existing_page_id: "{{ confluence_page_check.json.results[0].id }}"
-        existing_version: "{{ confluence_page_check.json.results[0].version.number }}"
+        existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
+        existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
         existing_content: "{{ confluence_page_check.json.results[0].body.storage.value | default('') }}"
       when: confluence_page_check.json.results | length > 0
 
     - name: Build new HTML section for target group
       ansible.builtin.set_fact:
-        new_section_html: |
+        new_section_html: >-
           <!-- START: {{ safe_group_name }} -->
-          {{ lookup('template', 'inventory_table_confluence.j2') }}
+          {{ lookup('template', 'inventory_table_confluence.j2') | trim }}
           <!-- END: {{ safe_group_name }} -->
 
     - name: Replace existing section for this group if found
       ansible.builtin.set_fact:
-        updated_content: "{{ existing_content | regex_replace('<!-- START: ' ~ safe_group_name ~ ' -->[\\s\\S]*?<!-- END: ' ~ safe_group_name ~ ' -->', new_section_html) }}"
+        updated_content: >-
+          {{
+            existing_content
+            | regex_replace(
+                '<!-- START: ' ~ safe_group_name ~ ' -->[\\s\\S]*?<!-- END: ' ~ safe_group_name ~ ' -->',
+                new_section_html
+              )
+          }}
       when: existing_content is search('<!-- START: ' ~ safe_group_name ~ ' -->')
 
     - name: Append section if not found (first-time addition)
@@ -90,6 +96,35 @@
             }
           }}
 
+    - name: Create Confluence page if not exists
+      ansible.builtin.uri:
+        url: "{{ confluence_base_url }}/rest/api/content/"
+        method: POST
+        user: "{{ confluence_user }}"
+        password: "{{ confluence_token }}"
+        force_basic_auth: yes
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body: >-
+          {{
+            {
+              "type": "page",
+              "title": page_title,
+              "space": {"key": confluence_space},
+              "body": {
+                "storage": {
+                  "value": new_section_html,
+                  "representation": "storage"
+                }
+              }
+            }
+          }}
+        status_code: [200, 201]
+      when: existing_page_id | length == 0
+      ignore_errors: true
+      failed_when: false
+
     - name: Update Confluence page (replace mode)
       ansible.builtin.uri:
         url: "{{ confluence_base_url }}/rest/api/content/{{ existing_page_id }}"
@@ -102,5 +137,6 @@
         body_format: json
         body: "{{ confluence_body }}"
         status_code: [200, 201]
+      when: existing_page_id | length > 0
       ignore_errors: true
       failed_when: false
