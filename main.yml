@@ -56,33 +56,33 @@
         existing_content: "{{ confluence_page_check.json.results[0].body.storage.value | default('') }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Build new HTML section for target group
+    - name: Build new HTML section with stable markers
       ansible.builtin.set_fact:
         new_section_html: >-
-          <div id="START_{{ safe_group_name }}" style="display:none"></div>
+          <div data-group="{{ safe_group_name }}" data-marker="start"></div>
           {{ lookup('template', 'inventory_table_confluence.j2') | trim }}
-          <div id="END_{{ safe_group_name }}" style="display:none"></div>
+          <div data-group="{{ safe_group_name }}" data-marker="end"></div>
 
-    - name: Normalize existing content for replacement
+    - name: Normalize existing content
       ansible.builtin.set_fact:
         normalized_existing: "{{ existing_content | default('') }}"
 
-    - name: Replace if section exists
+    - name: Replace content for existing group
       ansible.builtin.set_fact:
         updated_content: >-
           {{
             normalized_existing
             | regex_replace(
-                '<div id="START_' ~ safe_group_name ~ '".*?</div>[\\s\\S]*?<div id="END_' ~ safe_group_name ~ '".*?</div>',
+                '<div data-group="' ~ safe_group_name ~ '" data-marker="start"></div>[\\s\\S]*?<div data-group="' ~ safe_group_name ~ '" data-marker="end"></div>',
                 new_section_html
               )
           }}
-      when: normalized_existing is search('<div id="START_' ~ safe_group_name)
+      when: normalized_existing is search('<div data-group="' ~ safe_group_name ~ '" data-marker="start"></div>')
 
-    - name: Append section if not found
+    - name: Append new section if not found
       ansible.builtin.set_fact:
         updated_content: "{{ existing_content + '\n<hr/>\n' + new_section_html }}"
-      when: normalized_existing is not search('<div id="START_' ~ safe_group_name)
+      when: normalized_existing is not search('<div data-group="' ~ safe_group_name ~ '" data-marker="start"></div>')
 
     - name: Prepare Confluence body
       ansible.builtin.set_fact:
