@@ -70,11 +70,11 @@
           {{
             (existing_content | default(''))
             | regex_replace(
-                '<!-- START: ' ~ safe_group_name ~ ' -->[\\s\\S]*?<!-- END: ' ~ safe_group_name ~ ' -->',
+                '<!--\\s*START:\\s*' ~ safe_group_name ~ '\\s*-->[\\s\\S]*?<!--\\s*END:\\s*' ~ safe_group_name ~ '\\s*-->',
                 new_section_html
               )
           }}
-      when: "existing_content is search('<!-- START: ' ~ safe_group_name ~ ' -->')"
+      when: "existing_content is search('START:\\s*' ~ safe_group_name)"
 
     - name: Append section if not found (first-time addition)
       ansible.builtin.set_fact:
