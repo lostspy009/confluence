@@ -1,10 +1,14 @@
 {# -------------------------------------------------------------------------
   inventory_table_confluence.j2
-  Simplified version — no DB service or Role columns.
-  Keeps clean host, OS, kernel, disk info with Live/Unreachable status.
+  Enhanced Confluence inventory table:
+  - Only shows reachable hosts
+  - Removes summary section
+  - Adds /boot with green/red highlight (<100MB = red)
+  - Clean layout, all top-aligned
   ------------------------------------------------------------------------- #}
 
 {% set display_group = group_name | default(target_group) | default('all') %}
+
 <h1 style="margin-bottom:6px; text-align:center;">
   {{ (display_group | replace('_',' ') | title) }} Inventory Report
 </h1>
@@ -14,13 +18,14 @@
 
 <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:center; table-layout:fixed;">
   <colgroup>
+    <col style="width:16%;">
+    <col style="width:14%;">
     <col style="width:18%;">
-    <col style="width:15%;">
-    <col style="width:20%;">
-    <col style="width:15%;">
-    <col style="width:10%;">
-    <col style="width:10%;">
-    <col style="width:12%;">   {# Wider Status column #}
+    <col style="width:14%;">
+    <col style="width:9%;">
+    <col style="width:9%;">
+    <col style="width:9%;">
+    <col style="width:11%;">
   </colgroup>
   <tbody>
     <tr style="background-color:#f4f5f7;">
@@ -30,69 +35,64 @@
       <th style="padding:8px;">Kernel</th>
       <th style="padding:8px;">Root Disk</th>
       <th style="padding:8px;">/var</th>
+      <th style="padding:8px;">/boot</th>
       <th style="padding:8px;">Status</th>
     </tr>
 
 {% set host_list = groups.get(group_name, []) %}
-{% set total = host_list | length %}
-{% set live_hosts = 0 %}
 
 {% if host_list | length == 0 %}
-  <tr><td colspan="7" style="padding:10px; text-align:center;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
+  <tr><td colspan="8" style="padding:10px; text-align:center;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
 {% else %}
 {% for host in host_list %}
   {% set facts = hostvars.get(host, {}) %}
   {% set reachable = facts.get('ansible_default_ipv4', {}).get('address') is defined %}
+
   {% if reachable %}
-    {% set live_hosts = live_hosts + 1 %}
-  {% endif %}
+    {# Disk mounts #}
+    {% set mounts = facts.get('ansible_mounts', []) | default([]) %}
+    {% set root_mount = (mounts | selectattr('mount', 'equalto', '/') | list | first | default({})) %}
+    {% set var_mount  = (mounts | selectattr('mount', 'equalto', '/var') | list | first | default({})) %}
+    {% set boot_mount = (mounts | selectattr('mount', 'equalto', '/boot') | list | first | default({})) %}
 
-  {# Disk mounts #}
-  {% set mounts = facts.get('ansible_mounts', []) | default([]) %}
-  {% set root_mount = (mounts | selectattr('mount', 'equalto', '/') | list | first | default({})) %}
-  {% set var_mount  = (mounts | selectattr('mount', 'equalto', '/var') | list | first | default({})) %}
-  {% set var_free_gb = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
-  {% set var_class = 'highlight-green' if var_free_gb >= 1 else 'highlight-red' %}
-  {% set root_total_gb = (root_mount.size_total / 1024 / 1024 / 1024) if root_mount and root_mount.get('size_total') else 0 %}
+    {% set root_total_gb = (root_mount.size_total / 1024 / 1024 / 1024) if root_mount and root_mount.get('size_total') else 0 %}
+    {% set var_free_gb   = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
+    {% set boot_free_mb  = (boot_mount.size_available / 1024 / 1024) if boot_mount and boot_mount.get('size_available') else 0 %}
 
-  <tr style="border-bottom:1px solid #e2e8f0; height:42px; vertical-align:top;">
-    <td style="vertical-align:top;">{{ facts.get('ansible_hostname', host) }}</td>
-    <td style="vertical-align:top;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
-    <td style="vertical-align:top;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
-    <td style="vertical-align:top;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
+    {% set var_class = 'highlight-green' if var_free_gb >= 1 else 'highlight-red' %}
+    {% set boot_class = 'highlight-green' if boot_free_mb >= 100 else 'highlight-red' %}
 
-    <td style="vertical-align:top;">
-      {% if root_total_gb %}
-        {{ root_total_gb | round(1) }} GB
-      {% else %}
-        N/A
-      {% endif %}
-    </td>
+    <tr style="border-bottom:1px solid #e2e8f0; height:44px;">
+      <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_hostname', host) }}</td>
+      <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
+      <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
+      <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
 
-    <td style="vertical-align:top;" class="{{ var_class }}" data-highlight-colour="{{ 'green' if var_free_gb >= 1 else 'red' }}">
-      {{ var_free_gb | round(2) }} GB
-    </td>
+      <td style="vertical-align:top; padding:6px;">
+        {% if root_total_gb %}
+          {{ root_total_gb | round(1) }} GB
+        {% else %}
+          N/A
+        {% endif %}
+      </td>
 
-    <td style="font-weight:600; text-align:center; vertical-align:middle; white-space:nowrap; min-width:140px; padding:6px;">
-      {% if reachable %}
+      <td style="vertical-align:top; padding:6px;" class="{{ var_class }}" data-highlight-colour="{{ 'green' if var_free_gb >= 1 else 'red' }}">
+        {{ var_free_gb | round(2) }} GB
+      </td>
+
+      <td style="vertical-align:top; padding:6px;" class="{{ boot_class }}" data-highlight-colour="{{ 'green' if boot_free_mb >= 100 else 'red' }}">
+        {{ boot_free_mb | round(1) }} MB
+      </td>
+
+      <td style="font-weight:600; text-align:center; vertical-align:middle; white-space:nowrap; min-width:120px; padding:6px;">
         <span style="color:green;">✅ Live</span>
-      {% else %}
-        <span style="color:red;">❌ Unreachable</span>
-      {% endif %}
-    </td>
-  </tr>
+      </td>
+    </tr>
+  {% endif %}
 {% endfor %}
 {% endif %}
   </tbody>
 </table>
-
-{% set unreachable = total - live_hosts %}
-<p style="margin-top:10px; font-weight:bold; text-align:center;">Summary:</p>
-<ul style="margin-top:0; padding-left:18px; font-size:13px;">
-  <li>Total Hosts: {{ total }}</li>
-  <li>Live Hosts: {{ live_hosts }}</li>
-  <li>Unreachable Hosts: {{ unreachable }}</li>
-</ul>
 
 {# ----------------------- Unreachable hosts at bottom ----------------------- #}
 {% set unreachable_hosts = [] %}

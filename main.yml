@@ -1,6 +1,6 @@
 ---
 - name: Check host reachability and gather facts
-  hosts: patch_seso_2025
+  hosts: "{{ target_group }}"
   gather_facts: false
   ignore_unreachable: true
   tasks:
@@ -14,7 +14,7 @@
         reachable_status: "{{ 'reachable' if ping_result.ping is defined else 'unreachable' }}"
 
 - name: Gather facts from reachable hosts
-  hosts: patch_seso_2025
+  hosts: "{{ target_group }}"
   gather_facts: yes
   ignore_unreachable: true
   tasks:
