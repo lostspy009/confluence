@@ -28,72 +28,65 @@
   vars:
     confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
     confluence_space: "aap"
-    page_title: "AAP Inventory - patch_seso_2025"
-    safe_group_name: "patch_seso_2025"
+    page_title: "AAP Inventory - all"
+    safe_group_name: "{{ target_group }}"
 
   tasks:
-    - name: Load Confluence credentials from environment
+    - name: Load Confluence credentials
       ansible.builtin.set_fact:
         confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
         confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
 
-    - name: Validate credentials
-      ansible.builtin.fail:
-        msg: "Confluence credentials not set correctly"
-      when: confluence_user | length == 0 or confluence_token | length == 0
-
     - name: Check if Confluence page exists
       ansible.builtin.uri:
-        url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title | urlencode }}&spaceKey={{ confluence_space }}&expand=version"
+        url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title | urlencode }}&spaceKey={{ confluence_space }}&expand=body.storage,version"
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
         force_basic_auth: yes
         method: GET
-        status_code: 200
         return_content: yes
       register: confluence_page_check
 
-    - name: Set page ID and version if found
+    - name: Extract page ID, version, and existing content
       ansible.builtin.set_fact:
-        existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
-        existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
+        existing_page_id: "{{ confluence_page_check.json.results[0].id }}"
+        existing_version: "{{ confluence_page_check.json.results[0].version.number }}"
+        existing_content: "{{ confluence_page_check.json.results[0].body.storage.value | default('') }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Ensure defaults for Confluence page facts
+    - name: Build new group table section
       ansible.builtin.set_fact:
-        existing_page_id: "{{ existing_page_id | default('') }}"
-        existing_version: "{{ existing_version | default(0) }}"
-
-    - name: Build table for Confluence
-      ansible.builtin.set_fact:
-        table_html: "{{ lookup('template', 'inventory_table_confluence.j2') }}"
+        new_section_html: "{{ lookup('template', 'inventory_table_confluence.j2') }}"
       vars:
-        group_name: "{{ safe_group_name | default('all') }}"
-      run_once: true
+        group_name: "{{ safe_group_name }}"
 
-    - name: Prepare body for update
+    - name: Append new section to existing Confluence content
+      ansible.builtin.set_fact:
+        updated_content: "{{ existing_content }}<hr style='margin:18px 0; border:1px solid #ccc;'>{{ new_section_html }}"
+
+    - name: Prepare Confluence update body
       ansible.builtin.set_fact:
         confluence_body: >-
           {{
             {
+              "id": existing_page_id,
               "type": "page",
               "title": page_title,
               "space": {"key": confluence_space},
+              "version": {"number": (existing_version | int) + 1},
               "body": {
                 "storage": {
-                  "value": table_html,
+                  "value": updated_content,
                   "representation": "storage"
                 }
-              },
-              "version": {"number": (existing_version | int) + 1}
+              }
             }
           }}
 
-    - name: Create or update Confluence page
+    - name: Update Confluence page (append group data)
       ansible.builtin.uri:
-        url: >-
-          {{ confluence_base_url }}/rest/api/content{{ '/' + existing_page_id if existing_page_id | length > 0 else '' }}
-        method: "{{ 'PUT' if existing_page_id | length > 0 else 'POST' }}"
+        url: "{{ confluence_base_url }}/rest/api/content/{{ existing_page_id }}"
+        method: PUT
         user: "{{ confluence_user }}"
         password: "{{ confluence_token }}"
         force_basic_auth: yes
