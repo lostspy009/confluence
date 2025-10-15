@@ -76,12 +76,12 @@
                 new_section_html
               )
           }}
-      when: existing_content is search('<!-- START: ' ~ safe_group_name ~ ' -->')
+      when: "existing_content is search('<!-- START: ' ~ safe_group_name ~ ' -->')"
 
     - name: Append section if not found (first-time addition)
       ansible.builtin.set_fact:
         updated_content: "{{ (existing_content | default('')) + '\n<hr/>\n' + new_section_html }}"
-      when: existing_content is not search('<!-- START: ' ~ safe_group_name ~ ' -->')
+      when: "existing_content is not search('<!-- START: ' ~ safe_group_name ~ ' -->')"
 
     - name: Prepare Confluence update body
       ansible.builtin.set_fact:
