@@ -30,6 +30,7 @@
     confluence_space: "aap"
     page_title: "AAP Inventory - all"
     safe_group_name: "{{ target_group }}"
+    group_name: "{{ safe_group_name }}"
 
   tasks:
     - name: Load Confluence credentials
@@ -58,42 +59,30 @@
     - name: Build new HTML section for target group
       ansible.builtin.set_fact:
         new_section_html: >-
-          <!-- START: {{ safe_group_name }} -->
+          <div id="START_{{ safe_group_name }}" style="display:none"></div>
           {{ lookup('template', 'inventory_table_confluence.j2') | trim }}
-          <!-- END: {{ safe_group_name }} -->
-      vars:
-        group_name: "{{ safe_group_name }}"
+          <div id="END_{{ safe_group_name }}" style="display:none"></div>
 
-    - name: Normalize existing_content for matching
+    - name: Normalize existing content for replacement
       ansible.builtin.set_fact:
-        normalized_existing: >-
-          {{
-            (existing_content | default(''))
-            | regex_replace('<!--\\s*START:', '<!-- START:')
-            | regex_replace('-->\\s*<!--', '--><!--')
-          }}
+        normalized_existing: "{{ existing_content | default('') }}"
 
-    - name: Replace if existing marker found
+    - name: Replace if section exists
       ansible.builtin.set_fact:
         updated_content: >-
           {{
             normalized_existing
             | regex_replace(
-                '<!-- START:\\s*' ~ safe_group_name ~ '\\s*-->[\\s\\S]*?<!-- END:\\s*' ~ safe_group_name ~ '\\s*-->',
+                '<div id="START_' ~ safe_group_name ~ '".*?</div>[\\s\\S]*?<div id="END_' ~ safe_group_name ~ '".*?</div>',
                 new_section_html
               )
           }}
-      when: normalized_existing is search('<!-- START:\\s*' ~ safe_group_name)
+      when: normalized_existing is search('<div id="START_' ~ safe_group_name)
 
-    - name: Append if no existing section
+    - name: Append section if not found
       ansible.builtin.set_fact:
-        updated_content: >-
-          {{
-            (existing_content | default(''))
-            + '\n<hr/>\n'
-            + new_section_html
-          }}
-      when: normalized_existing is not search('<!-- START:\\s*' ~ safe_group_name)
+        updated_content: "{{ existing_content + '\n<hr/>\n' + new_section_html }}"
+      when: normalized_existing is not search('<div id="START_' ~ safe_group_name)
 
     - name: Prepare Confluence body
       ansible.builtin.set_fact:
