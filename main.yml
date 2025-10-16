@@ -52,7 +52,7 @@
         existing_content: "{{ confluence_page_check.json.results[0].body.storage.value | default('') }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Build HTML table for reachable hosts
+    - name: Build list of reachable hosts
       ansible.builtin.set_fact:
         filtered_hosts: >-
           {{
@@ -61,12 +61,12 @@
             | selectattr('reachable_status', 'equalto', 'reachable')
             | list
           }}
-          
+
     - name: Render new section HTML (excluding unreachable hosts)
       ansible.builtin.set_fact:
         new_section_html: >-
           <div data-group="{{ safe_group_name }}" data-marker="start"></div>
-          {{ lookup('template', 'inventory_table_confluence.j2', vars={'filtered_hosts': reachable_hosts}) | trim }}
+          {{ lookup('template', 'inventory_table_confluence.j2', vars={'filtered_hosts': filtered_hosts}) | trim }}
           <div data-group="{{ safe_group_name }}" data-marker="end"></div>
 
     - name: Replace group content if page exists
