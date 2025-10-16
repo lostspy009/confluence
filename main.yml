@@ -52,17 +52,16 @@
         existing_content: "{{ confluence_page_check.json.results[0].body.storage.value | default('') }}"
       when: confluence_page_check.json.results | length > 0
 
-    # 🧩 Filter only reachable hosts for rendering
     - name: Build HTML table for reachable hosts
       ansible.builtin.set_fact:
-        reachable_hosts: >-
+        filtered_hosts: >-
           {{
             groups[target_group]
             | map('extract', hostvars)
             | selectattr('reachable_status', 'equalto', 'reachable')
             | list
           }}
-
+          
     - name: Render new section HTML (excluding unreachable hosts)
       ansible.builtin.set_fact:
         new_section_html: >-
