@@ -1,5 +1,5 @@
 ---
-- name: Check host reachability and gather facts
+- name: Check host reachability
   hosts: "{{ target_group }}"
   gather_facts: false
   ignore_unreachable: true
@@ -9,11 +9,11 @@
       register: ping_result
       ignore_errors: true
 
-    - name: Set reachability status
+    - name: Mark reachable status
       ansible.builtin.set_fact:
         reachable_status: "{{ 'reachable' if ping_result.ping is defined else 'unreachable' }}"
 
-- name: Gather facts from reachable hosts
+- name: Gather facts only from reachable hosts
   hosts: "{{ target_group }}"
   gather_facts: yes
   ignore_unreachable: true
@@ -22,7 +22,7 @@
       ansible.builtin.meta: end_host
       when: hostvars[inventory_hostname].reachable_status == 'unreachable'
 
-- name: Update Confluence page with latest inventory
+- name: Update or create Confluence page with reachable hosts
   hosts: localhost
   gather_facts: false
   vars:
@@ -30,14 +30,10 @@
     confluence_space: "aap"
     page_title: "AAP Inventory - all"
     safe_group_name: "{{ target_group }}"
-    group_name: "{{ safe_group_name }}"
+    confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
+    confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
 
   tasks:
-    - name: Load Confluence credentials
-      ansible.builtin.set_fact:
-        confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
-        confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
-
     - name: Check if Confluence page exists
       ansible.builtin.uri:
         url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title | urlencode }}&spaceKey={{ confluence_space }}&expand=body.storage,version"
@@ -49,42 +45,46 @@
         status_code: [200, 201]
       register: confluence_page_check
 
-    - name: Extract existing page data
+    - name: Set page facts
       ansible.builtin.set_fact:
         existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
         existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
         existing_content: "{{ confluence_page_check.json.results[0].body.storage.value | default('') }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Build new HTML section with stable markers
+    # 🧩 Filter only reachable hosts for rendering
+    - name: Build HTML table for reachable hosts
+      ansible.builtin.set_fact:
+        reachable_hosts: >-
+          {{
+            groups[target_group]
+            | map('extract', hostvars)
+            | selectattr('reachable_status', 'equalto', 'reachable')
+            | list
+          }}
+
+    - name: Render new section HTML (excluding unreachable hosts)
       ansible.builtin.set_fact:
         new_section_html: >-
           <div data-group="{{ safe_group_name }}" data-marker="start"></div>
-          {{ lookup('template', 'inventory_table_confluence.j2') | trim }}
+          {{ lookup('template', 'inventory_table_confluence.j2', vars={'filtered_hosts': reachable_hosts}) | trim }}
           <div data-group="{{ safe_group_name }}" data-marker="end"></div>
 
-    - name: Normalize existing content
-      ansible.builtin.set_fact:
-        normalized_existing: "{{ existing_content | default('') }}"
-
-    - name: Replace content for existing group
+    - name: Replace group content if page exists
       ansible.builtin.set_fact:
         updated_content: >-
           {{
-            normalized_existing
+            existing_content
             | regex_replace(
                 '<div data-group="' ~ safe_group_name ~ '" data-marker="start"></div>[\\s\\S]*?<div data-group="' ~ safe_group_name ~ '" data-marker="end"></div>',
                 new_section_html
               )
+            if existing_content is search('<div data-group="' ~ safe_group_name ~ '" data-marker="start"></div>')
+            else existing_content + '\n<hr/>\n' + new_section_html
           }}
-      when: normalized_existing is search('<div data-group="' ~ safe_group_name ~ '" data-marker="start"></div>')
+      when: existing_page_id | length > 0
 
-    - name: Append new section if not found
-      ansible.builtin.set_fact:
-        updated_content: "{{ existing_content + '\n<hr/>\n' + new_section_html }}"
-      when: normalized_existing is not search('<div data-group="' ~ safe_group_name ~ '" data-marker="start"></div>')
-
-    - name: Prepare Confluence body
+    - name: Prepare page body
       ansible.builtin.set_fact:
         confluence_body: >-
           {{
@@ -96,14 +96,14 @@
               "version": {"number": (existing_version | int) + 1},
               "body": {
                 "storage": {
-                  "value": updated_content,
+                  "value": updated_content | default(new_section_html),
                   "representation": "storage"
                 }
               }
             }
           }}
 
-    - name: Create page if missing
+    - name: Create Confluence page if it doesn't exist
       ansible.builtin.uri:
         url: "{{ confluence_base_url }}/rest/api/content"
         method: POST
@@ -113,26 +113,18 @@
         headers:
           Content-Type: "application/json"
         body_format: json
-        body: >-
-          {{
-            {
-              "type": "page",
-              "title": page_title,
-              "space": {"key": confluence_space},
-              "body": {
-                "storage": {
-                  "value": new_section_html,
-                  "representation": "storage"
-                }
-              }
-            }
-          }}
+        body:
+          type: "page"
+          title: "{{ page_title }}"
+          space: {"key": "{{ confluence_space }}"}
+          body:
+            storage:
+              value: "{{ new_section_html }}"
+              representation: "storage"
         status_code: [200, 201]
       when: existing_page_id | length == 0
-      ignore_errors: true
-      failed_when: false
 
-    - name: Update (replace) Confluence page
+    - name: Update existing Confluence page
       ansible.builtin.uri:
         url: "{{ confluence_base_url }}/rest/api/content/{{ existing_page_id }}"
         method: PUT
@@ -145,5 +137,3 @@
         body: "{{ confluence_body }}"
         status_code: [200, 201]
       when: existing_page_id | length > 0
-      ignore_errors: true
-      failed_when: false

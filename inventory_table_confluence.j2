@@ -1,10 +1,10 @@
 {# -------------------------------------------------------------------------
   inventory_table_confluence.j2
-  Enhanced Confluence inventory table:
-  - Only shows reachable hosts
-  - Removes summary section
-  - Adds /boot with green/red highlight (<100MB = red)
-  - Clean layout, all top-aligned
+  Updated for new playbook:
+  - Uses `filtered_hosts` passed from playbook (only reachable hosts)
+  - Removes unreachable section
+  - Adds boot partition health coloring
+  - Clean, responsive layout for Confluence
   ------------------------------------------------------------------------- #}
 
 {% set display_group = group_name | default(target_group) | default('all') %}
@@ -39,85 +39,51 @@
       <th style="padding:8px;">Status</th>
     </tr>
 
-{% set host_list = groups.get(group_name, []) %}
-
-{% if host_list | length == 0 %}
-  <tr><td colspan="8" style="padding:10px; text-align:center;"><b>No hosts found in group '{{ group_name }}'</b></td></tr>
+{% if filtered_hosts | length == 0 %}
+  <tr><td colspan="8" style="padding:10px; text-align:center;">
+    <b>No reachable hosts found in group '{{ display_group }}'</b>
+  </td></tr>
 {% else %}
-{% for host in host_list %}
-  {% set facts = hostvars.get(host, {}) %}
-  {% set reachable = facts.get('ansible_default_ipv4', {}).get('address') is defined %}
+{% for facts in filtered_hosts %}
+  {% set mounts = facts.get('ansible_mounts', []) | default([]) %}
+  {% set root_mount = (mounts | selectattr('mount', 'equalto', '/') | list | first | default({})) %}
+  {% set var_mount  = (mounts | selectattr('mount', 'equalto', '/var') | list | first | default({})) %}
+  {% set boot_mount = (mounts | selectattr('mount', 'equalto', '/boot') | list | first | default({})) %}
 
-  {% if reachable %}
-    {# Disk mounts #}
-    {% set mounts = facts.get('ansible_mounts', []) | default([]) %}
-    {% set root_mount = (mounts | selectattr('mount', 'equalto', '/') | list | first | default({})) %}
-    {% set var_mount  = (mounts | selectattr('mount', 'equalto', '/var') | list | first | default({})) %}
-    {% set boot_mount = (mounts | selectattr('mount', 'equalto', '/boot') | list | first | default({})) %}
+  {% set root_total_gb = (root_mount.size_total / 1024 / 1024 / 1024) if root_mount and root_mount.get('size_total') else 0 %}
+  {% set var_free_gb   = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
+  {% set boot_free_mb  = (boot_mount.size_available / 1024 / 1024) if boot_mount and boot_mount.get('size_available') else 0 %}
 
-    {% set root_total_gb = (root_mount.size_total / 1024 / 1024 / 1024) if root_mount and root_mount.get('size_total') else 0 %}
-    {% set var_free_gb   = (var_mount.size_available / 1024 / 1024 / 1024) if var_mount and var_mount.get('size_available') else 0 %}
-    {% set boot_free_mb  = (boot_mount.size_available / 1024 / 1024) if boot_mount and boot_mount.get('size_available') else 0 %}
+  {% set var_class = 'highlight-green' if var_free_gb >= 1 else 'highlight-red' %}
+  {% set boot_class = 'highlight-green' if boot_free_mb >= 100 else 'highlight-red' %}
 
-    {% set var_class = 'highlight-green' if var_free_gb >= 1 else 'highlight-red' %}
-    {% set boot_class = 'highlight-green' if boot_free_mb >= 100 else 'highlight-red' %}
+  <tr style="border-bottom:1px solid #e2e8f0; height:44px;">
+    <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_hostname', 'N/A') }}</td>
+    <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
+    <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
+    <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
 
-    <tr style="border-bottom:1px solid #e2e8f0; height:44px;">
-      <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_hostname', host) }}</td>
-      <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_default_ipv4', {}).get('address', 'N/A') }}</td>
-      <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_distribution', 'Unknown') }} {{ facts.get('ansible_distribution_version', '') }}</td>
-      <td style="vertical-align:top; padding:6px;">{{ facts.get('ansible_kernel', 'N/A') }}</td>
+    <td style="vertical-align:top; padding:6px;">
+      {% if root_total_gb %}
+        {{ root_total_gb | round(1) }} GB
+      {% else %}
+        N/A
+      {% endif %}
+    </td>
 
-      <td style="vertical-align:top; padding:6px;">
-        {% if root_total_gb %}
-          {{ root_total_gb | round(1) }} GB
-        {% else %}
-          N/A
-        {% endif %}
-      </td>
+    <td style="vertical-align:top; padding:6px;" class="{{ var_class }}" data-highlight-colour="{{ 'green' if var_free_gb >= 1 else 'red' }}">
+      {{ var_free_gb | round(2) }} GB
+    </td>
 
-      <td style="vertical-align:top; padding:6px;" class="{{ var_class }}" data-highlight-colour="{{ 'green' if var_free_gb >= 1 else 'red' }}">
-        {{ var_free_gb | round(2) }} GB
-      </td>
+    <td style="vertical-align:top; padding:6px;" class="{{ boot_class }}" data-highlight-colour="{{ 'green' if boot_free_mb >= 100 else 'red' }}">
+      {{ boot_free_mb | round(1) }} MB
+    </td>
 
-      <td style="vertical-align:top; padding:6px;" class="{{ boot_class }}" data-highlight-colour="{{ 'green' if boot_free_mb >= 100 else 'red' }}">
-        {{ boot_free_mb | round(1) }} MB
-      </td>
-
-      <td style="font-weight:600; text-align:center; vertical-align:middle; white-space:nowrap; min-width:120px; padding:6px;">
-        <span style="color:green;">✅ Live</span>
-      </td>
-    </tr>
-  {% endif %}
+    <td style="font-weight:600; text-align:center; vertical-align:middle; white-space:nowrap; min-width:120px; padding:6px;">
+      <span style="color:green;">✅ Live</span>
+    </td>
+  </tr>
 {% endfor %}
 {% endif %}
   </tbody>
 </table>
-
-{# ----------------------- Unreachable hosts at bottom ----------------------- #}
-{% set unreachable_hosts = [] %}
-{% for host in host_list %}
-  {% if hostvars.get(host, {}).get('reachable_status') == 'unreachable' %}
-    {% set _ = unreachable_hosts.append(host) %}
-  {% endif %}
-{% endfor %}
-
-{% if unreachable_hosts | length > 0 %}
-  <p style="margin-top:14px; font-weight:bold; text-align:center;">Unreachable Hosts ({{ unreachable_hosts | length }}):</p>
-  <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:center; table-layout:fixed;">
-    <colgroup>
-      <col style="width:40%;">
-      <col style="width:60%;">
-    </colgroup>
-    <tr style="background-color:#ffecec;">
-      <th style="padding:8px;">Hostname</th>
-      <th style="padding:8px;">Status</th>
-    </tr>
-    {% for host in unreachable_hosts %}
-    <tr style="border-bottom:1px solid #e2e8f0;">
-      <td style="padding:6px;">{{ host }}</td>
-      <td style="padding:6px; color:red; font-weight:600;">❌ Unreachable</td>
-    </tr>
-    {% endfor %}
-  </table>
-{% endif %}
