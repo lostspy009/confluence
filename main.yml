@@ -28,7 +28,7 @@
   vars:
     confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
     confluence_space: "aap"
-    page_title: "AAP Inventory - all"
+    page_title: "{{ target_group }}"
     safe_group_name: "{{ target_group }}"
     confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
     confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
@@ -49,41 +49,25 @@
       ansible.builtin.set_fact:
         existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
         existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
-        existing_content: "{{ confluence_page_check.json.results[0].body.storage.value | default('') }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Build list of reachable hosts
+    - name: Build list of reachable hosts (exclude unreachable)
       ansible.builtin.set_fact:
         filtered_hosts: >-
           {{
             groups[target_group]
             | map('extract', hostvars)
             | selectattr('reachable_status', 'equalto', 'reachable')
+            | selectattr('ansible_default_ipv4', 'defined')
             | list
           }}
 
-    - name: Render new section HTML (excluding unreachable hosts)
+    - name: Render inventory HTML (only reachable hosts)
       ansible.builtin.set_fact:
         new_section_html: >-
-          <div data-group="{{ safe_group_name }}" data-marker="start"></div>
           {{ lookup('template', 'inventory_table_confluence.j2', vars={'filtered_hosts': filtered_hosts}) | trim }}
-          <div data-group="{{ safe_group_name }}" data-marker="end"></div>
 
-    - name: Replace group content if page exists
-      ansible.builtin.set_fact:
-        updated_content: >-
-          {{
-            existing_content
-            | regex_replace(
-                '<div data-group="' ~ safe_group_name ~ '" data-marker="start"></div>[\\s\\S]*?<div data-group="' ~ safe_group_name ~ '" data-marker="end"></div>',
-                new_section_html
-              )
-            if existing_content is search('<div data-group="' ~ safe_group_name ~ '" data-marker="start"></div>')
-            else existing_content + '\n<hr/>\n' + new_section_html
-          }}
-      when: existing_page_id | length > 0
-
-    - name: Prepare page body
+    - name: Prepare full page body (replace completely)
       ansible.builtin.set_fact:
         confluence_body: >-
           {{
@@ -95,14 +79,14 @@
               "version": {"number": (existing_version | int) + 1},
               "body": {
                 "storage": {
-                  "value": updated_content | default(new_section_html),
+                  "value": new_section_html,
                   "representation": "storage"
                 }
               }
             }
           }}
 
-    - name: Create Confluence page if it doesn't exist
+    - name: Create Confluence page if missing
       ansible.builtin.uri:
         url: "{{ confluence_base_url }}/rest/api/content"
         method: POST
@@ -123,7 +107,7 @@
         status_code: [200, 201]
       when: existing_page_id | length == 0
 
-    - name: Update existing Confluence page
+    - name: Update (replace) Confluence page if exists
       ansible.builtin.uri:
         url: "{{ confluence_base_url }}/rest/api/content/{{ existing_page_id }}"
         method: PUT
