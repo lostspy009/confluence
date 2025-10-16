@@ -28,7 +28,7 @@
   vars:
     confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
     confluence_space: "aap"
-    page_title: "AAP Inventory - all"
+    page_title: "{{ target_group | replace('_', ' ') | title }}"
     safe_group_name: "{{ target_group }}"
     confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
     confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
