@@ -1,10 +1,10 @@
 {# -------------------------------------------------------------------------
   inventory_table_confluence.j2
-  Updated for new playbook:
-  - Uses `filtered_hosts` passed from playbook (only reachable hosts)
-  - Removes unreachable section
-  - Adds boot partition health coloring
-  - Clean, responsive layout for Confluence
+  Final version:
+  - Shows reachable hosts with detailed info (filtered_hosts)
+  - Adds unreachable hosts table (unreachable_hosts)
+  - Clear visual distinction for each section
+  - Clean layout for Confluence wiki rendering
   ------------------------------------------------------------------------- #}
 
 {% set display_group = group_name | default(target_group) | default('all') %}
@@ -16,6 +16,8 @@
   Generated at {{ '%Y-%m-%d %H:%M:%S' | strftime }}
 </p>
 
+{# ==================== Reachable Hosts Table ==================== #}
+<h2 style="margin-top:12px; text-align:left;">✅ Reachable Hosts</h2>
 <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:center; table-layout:fixed;">
   <colgroup>
     <col style="width:16%;">
@@ -87,3 +89,26 @@
 {% endif %}
   </tbody>
 </table>
+
+{# ==================== Unreachable Hosts Table ==================== #}
+{% if unreachable_hosts is defined and unreachable_hosts | length > 0 %}
+  <h2 style="margin-top:24px; text-align:left;">❌ Unreachable Hosts ({{ unreachable_hosts | length }})</h2>
+  <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:center; table-layout:fixed;">
+    <colgroup>
+      <col style="width:50%;">
+      <col style="width:50%;">
+    </colgroup>
+    <tbody>
+      <tr style="background-color:#ffecec;">
+        <th style="padding:8px;">Hostname</th>
+        <th style="padding:8px;">Status</th>
+      </tr>
+      {% for host in unreachable_hosts %}
+      <tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:6px;">{{ host }}</td>
+        <td style="padding:6px; color:red; font-weight:600;">Unreachable</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
