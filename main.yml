@@ -22,7 +22,7 @@
       ansible.builtin.meta: end_host
       when: hostvars[inventory_hostname].reachable_status == 'unreachable'
 
-- name: Update or create Confluence page with reachable hosts
+- name: Update or create Confluence page with reachable and unreachable hosts
   hosts: localhost
   gather_facts: false
   vars:
@@ -45,18 +45,18 @@
         status_code: [200, 201]
       register: confluence_page_check
 
-    - name: Initialize page facts (defaults)
+    - name: Initialize page facts
       ansible.builtin.set_fact:
         existing_page_id: ""
         existing_version: 0
 
-    - name: Set page facts if Confluence page exists
+    - name: Set page facts if exists
       ansible.builtin.set_fact:
         existing_page_id: "{{ confluence_page_check.json.results[0].id | default('') }}"
         existing_version: "{{ confluence_page_check.json.results[0].version.number | default(0) }}"
       when: confluence_page_check.json.results | length > 0
 
-    - name: Build list of reachable hosts (exclude unreachable)
+    - name: Build lists of reachable and unreachable hosts
       ansible.builtin.set_fact:
         filtered_hosts: >-
           {{
@@ -66,13 +66,26 @@
             | selectattr('ansible_default_ipv4', 'defined')
             | list
           }}
+        unreachable_hosts: >-
+          {{
+            groups[target_group]
+            | map('extract', hostvars)
+            | rejectattr('reachable_status', 'equalto', 'reachable')
+            | map(attribute='inventory_hostname')
+            | list
+          }}
 
-    - name: Render inventory HTML (only reachable hosts)
+    - name: Render inventory HTML (reachable + unreachable)
       ansible.builtin.set_fact:
         new_section_html: >-
-          {{ lookup('template', 'inventory_table_confluence.j2', vars={'filtered_hosts': filtered_hosts}) | trim }}
+          {{ lookup('template', 'inventory_table_confluence.j2',
+               vars={
+                 'filtered_hosts': filtered_hosts,
+                 'unreachable_hosts': unreachable_hosts,
+                 'group_name': safe_group_name
+               }) | trim }}
 
-    - name: Prepare full page body (replace completely)
+    - name: Prepare full Confluence body (replace completely)
       ansible.builtin.set_fact:
         confluence_body: >-
           {{
