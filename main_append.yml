@@ -1,0 +1,123 @@
+---
+- name: Check host reachability
+  hosts: "{{ target_group }}"
+  gather_facts: false
+  ignore_unreachable: true
+  tasks:
+    - name: Ping test
+      ansible.builtin.ping:
+      register: ping_result
+      ignore_errors: true
+
+    - name: Mark reachable status
+      ansible.builtin.set_fact:
+        reachable_status: "{{ 'reachable' if ping_result.ping is defined else 'unreachable' }}"
+
+- name: Gather facts only from reachable hosts
+  hosts: "{{ target_group }}"
+  gather_facts: yes
+  ignore_unreachable: true
+  tasks:
+    - name: Skip unreachable hosts
+      ansible.builtin.meta: end_host
+      when: hostvars[inventory_hostname].reachable_status == 'unreachable'
+
+- name: Update or create Confluence page with reachable and unreachable hosts
+  hosts: localhost
+  gather_facts: false
+  vars:
+    confluence_base_url: "https://nareshyadavmusic.atlassian.net/wiki"
+    confluence_space: "aap"
+    page_title: "{{ target_group | replace('_', ' ') | title }}"
+    safe_group_name: "{{ target_group }}"
+    confluence_user: "{{ lookup('env', 'CONFLUENCE_USER') }}"
+    confluence_token: "{{ lookup('env', 'CONFLUENCE_TOKEN') }}"
+
+  tasks:
+    - name: Check if Confluence page exists
+      ansible.builtin.uri:
+        url: "{{ confluence_base_url }}/rest/api/content?title={{ page_title | urlencode }}&spaceKey={{ confluence_space }}&expand=body.storage,version"
+        method: GET
+        user: "{{ confluence_user }}"
+        password: "{{ confluence_token }}"
+        force_basic_auth: true
+        return_content: true
+        status_code: [200, 201]
+      register: confluence_page_check
+
+    - name: Fail if Confluence page is not found
+      ansible.builtin.fail:
+        msg: "ERROR: Confluence page '{{ page_title }}' not found in space '{{ confluence_space }}'. Cannot append data to non-existent page. Terminating execution."
+      when: confluence_page_check.json.results | length == 0
+
+    - name: Set page facts if exists
+      ansible.builtin.set_fact:
+        existing_page_id: "{{ confluence_page_check.json.results[0].id }}"
+        existing_version: "{{ confluence_page_check.json.results[0].version.number }}"
+        existing_body: "{{ confluence_page_check.json.results[0].body.storage.value }}"
+
+    - name: Build lists of reachable and unreachable hosts
+      ansible.builtin.set_fact:
+        filtered_hosts: >-
+          {{
+            groups[target_group]
+            | map('extract', hostvars)
+            | selectattr('reachable_status', 'equalto', 'reachable')
+            | selectattr('ansible_default_ipv4', 'defined')
+            | list
+          }}
+        unreachable_hosts: >-
+          {{
+            groups[target_group]
+            | map('extract', hostvars)
+            | rejectattr('reachable_status', 'equalto', 'reachable')
+            | map(attribute='inventory_hostname')
+            | list
+          }}
+
+    - name: Render inventory HTML (reachable + unreachable)
+      ansible.builtin.set_fact:
+        new_section_html: >-
+          {{ lookup('template', 'inventory_table_confluence_append.j2',
+               vars={
+                 'filtered_hosts': filtered_hosts,
+                 'unreachable_hosts': unreachable_hosts,
+                 'group_name': safe_group_name
+               }) | trim }}
+
+    - name: Prepare appended Confluence body with divider
+      ansible.builtin.set_fact:
+        confluence_body: >-
+          {{
+            {
+              "id": existing_page_id,
+              "type": "page",
+              "title": page_title,
+              "space": {"key": confluence_space},
+              "version": {"number": (existing_version | int) + 1},
+              "body": {
+                "storage": {
+                  "value": (existing_body | default("")) + "<hr />\n" + new_section_html,
+                  "representation": "storage"
+                }
+              }
+            }
+          }}
+
+    - name: Append data to Confluence page
+      ansible.builtin.uri:
+        url: "{{ confluence_base_url }}/rest/api/content/{{ existing_page_id }}"
+        method: PUT
+        user: "{{ confluence_user }}"
+        password: "{{ confluence_token }}"
+        force_basic_auth: true
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body: "{{ confluence_body }}"
+        status_code: [200, 201]
+      register: confluence_update_result
+
+    - name: Success message - Data appended to Confluence page
+      ansible.builtin.debug:
+        msg: "SUCCESS: Data successfully appended to Confluence page '{{ page_title }}' with divider. Page ID: {{ existing_page_id }}"
