@@ -1,0 +1,155 @@
+---
+- name: Ping selected Host Collection group
+  hosts: "foreman_hostcollection_{{ host_collection_name }}"
+  gather_facts: false
+  any_errors_fatal: false
+  ignore_unreachable: true
+
+  tasks:
+    - name: Fail if no hosts are available in inventory
+      delegate_to: localhost
+      run_once: true
+      fail:
+        msg: |
+          No hosts available in the inventory!
+          Cannot proceed with health check report generation.
+      when: groups['all'] | length == 0
+
+    - name: Initialize reachability facts
+      ansible.builtin.set_fact:
+        healthcheck_host_reachable: true
+        healthcheck_error_message: ""
+      ignore_errors: true
+
+    - name: Gather essential host facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+          - network
+          - hardware
+        filter:
+          - ansible_default_ipv4
+          - ansible_distribution
+          - ansible_distribution_release
+          - ansible_distribution_version
+          - ansible_hostname
+          - ansible_fqdn
+          - ansible_domain
+          - ansible_kernel
+          - ansible_architecture
+          - ansible_mounts
+          - ansible_memtotal_mb
+          - ansible_processor_vcpus
+          - ansible_processor_count
+          - ansible_uptime_seconds
+          - ansible_date_time
+      ignore_errors: true
+      ignore_unreachable: true
+      register: fact_gather_result
+
+    - name: Mark host as unreachable if fact gathering failed
+      ansible.builtin.set_fact:
+        healthcheck_host_reachable: false
+        healthcheck_error_message: "{{ fact_gather_result.msg | default('Failed to gather facts - host may be unreachable or SSH connection failed') }}"
+      when: fact_gather_result is failed or fact_gather_result is unreachable
+      ignore_errors: true
+
+    - name: Gather running service facts
+      ansible.builtin.service_facts:
+      no_log: true
+      ignore_errors: true
+      ignore_unreachable: true
+      when: healthcheck_host_reachable | default(false)
+
+    - name: Identify running database services
+      ansible.builtin.set_fact:
+        healthcheck_db_services: "{{ _running_db_services }}"
+        healthcheck_is_db_server: "{{ ((_running_db_services | length) > 0) | bool }}"
+      vars:
+        _raw_services: "{{ ansible_facts.services | default({}) }}"
+        _services_map: "{{ _raw_services if _raw_services is mapping else {} }}"
+        _db_regex: '(?i)(mariadb|postgres|postgresql|redis|oracle|mysql)'
+        _running_db_services: >-
+          {{
+            _services_map
+            | dict2items
+            | selectattr('value.state', 'defined')
+            | selectattr('value.state', 'regex', '(?i)running')
+            | selectattr('key', 'regex', _db_regex)
+            | map(attribute='key')
+            | map('regex_replace', '\\.(service|socket|target)$', '')
+            | list
+          }}
+      ignore_errors: true
+      when: healthcheck_host_reachable | default(false)
+
+    - name: Group reachable database servers
+      ansible.builtin.group_by:
+        key: "database_running_nodes"
+      when: 
+        - healthcheck_host_reachable | default(false)
+        - healthcheck_is_db_server | bool
+
+    - name: Group reachable non-database servers
+      ansible.builtin.group_by:
+        key: "non_database_running_nodes"
+      when: 
+        - healthcheck_host_reachable | default(false)
+        - not (healthcheck_is_db_server | bool)
+
+    - name: Group unreachable hosts
+      ansible.builtin.group_by:
+        key: "healthcheck_failed_nodes"
+      when: not (healthcheck_host_reachable | default(false))
+
+    - name: Build group for healthy selected type of servers
+      ansible.builtin.group_by:
+        key: "healthcheck_runtime"
+      when: >
+        (healthcheck_host_reachable | default(false)) and
+        ((select_host_type | default('all') | string | lower == 'all') or
+        (select_host_type | default('all') | string | lower in ['database_servers'] and healthcheck_is_db_server | bool) or
+        (select_host_type | default('all') | string | lower in ['application_servers'] and not (healthcheck_is_db_server | bool)))
+
+
+- name: Perform patching and generate health report via YUM
+  hosts: healthcheck_runtime
+  gather_facts: true
+  become: true
+  vars:
+    report_path: "/tmp/{{ host_collection_name }}-{{ select_host_type }}-after-patching.html"
+
+  tasks:
+    - name: Generate consolidated HTML report locally
+      template:
+        src: pre-check.html.j2
+        dest: "{{ report_path }}"
+      delegate_to: localhost
+
+    - name: Send email with health check report
+      community.general.mail:
+        host: mailhost.scania.com
+        port: 25
+        from: noreply@scania.com
+        to: "puttuboyana.naresh@scania.com"
+        subject: "Health Check Report - {{ host_collection_name }}"
+        body: |
+          Hello,
+
+          Please find the attached Health Check Report for {{ host_collection_name }}.
+
+          Regards,
+          Ansible Automation
+        attach:
+          - "{{ report_path }}"
+      delegate_to: localhost
+      run_once: true
+
+  handlers:
+    - name: Update MOTD with last patch date
+      ansible.builtin.lineinfile:
+        path: /etc/motd
+        regexp: '^Previous patch date:.*'
+        line: "Previous patch date: {{ ansible_date_time.date }} {{ ansible_date_time.time }}"
+        create: yes
+      become: true
