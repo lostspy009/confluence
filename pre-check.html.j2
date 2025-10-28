@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Ansible Host Details Report</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+
+    body {
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f7fb;
+      color: #1f2933;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 2.5rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 2.25rem;
+      letter-spacing: 0.02em;
+      color: #0b3d91;
+    }
+
+    header p {
+      margin: 0.75rem 0 0;
+      color: #52606d;
+      font-size: 1rem;
+    }
+
+    .host-card {
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 1.75rem;
+      margin-bottom: 1.2rem;
+      box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(15, 23, 42, 0.08);
+    }
+
+    .host-card h2 {
+      margin: 0 0 1.25rem 0;
+      font-size: 1.5rem;
+      color: #0f172a;
+    }
+
+    .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .summary-badge {
+      background: rgba(14, 165, 233, 0.12);
+      color: #0d47a1;
+      border-radius: 999px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .summary-badge-success {
+      background: rgba(34, 197, 94, 0.16);
+      color: #166534;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+
+    .status-ok {
+      background: rgba(34, 197, 94, 0.16);
+      color: #166534;
+    }
+
+    .status-critical {
+      background: rgba(239, 68, 68, 0.16);
+      color: #b91c1c;
+    }
+
+    .details-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      table-layout: fixed;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    .details-table tr {
+      border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+    }
+
+    .details-table tr:last-child {
+      border-bottom: none;
+    }
+
+    .details-table th {
+      text-align: left;
+      padding: 0.85rem 1rem;
+      width: 30%;
+      vertical-align: top;
+      font-weight: 600;
+      color: #475569;
+      background: #f8fafc;
+    }
+
+    .details-table td {
+      padding: 0.85rem 1rem;
+      color: #1f2937;
+      word-break: break-word;
+    }
+
+    @media (max-width: 720px) {
+      .host-card {
+        padding: 1.25rem;
+      }
+
+      .details-table th {
+        width: 40%;
+      }
+
+      header h1 {
+        font-size: 1.85rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Ansible Host Details Report</h1>
+      {% set healthy_hosts = groups['healthcheck_healthy_nodes'] | default([]) %}
+      {% if healthy_hosts | length > 0 %}
+        {% set execution_host = hostvars[healthy_hosts[0]] %}
+        {% if execution_host.ansible_date_time is defined %}
+          {% set report_time = execution_host.ansible_date_time.date + ' ' + execution_host.ansible_date_time.time %}
+        {% else %}
+          {% set report_time = 'N/A' %}
+        {% endif %}
+      {% else %}
+        {% set report_time = 'N/A' %}
+      {% endif %}
+      <p>Pre-checks report. Generated at {{ report_time }}</p>
+    </header>
+
+    {%- set host_type_filter = (vars.get('select_host_type', 'all') | string | lower) -%}
+    {%- set runtime_group = 'healthcheck_runtime' -%}
+    {%- set target_hosts = namespace(items=[]) -%}
+    {%- if runtime_group in groups and groups[runtime_group] %}
+      {%- set target_hosts.items = groups[runtime_group] -%}
+    {%- else %}
+      {%- set target_hosts.items = groups['all'] -%}
+    {%- endif %}
+    {%- set rendered_hosts = namespace(count=0) -%}
+
+    {%- for host in target_hosts.items | unique | sort %}
+      {%- set facts = hostvars[host] -%}
+  {%- set default_ipv4 = facts.get('ansible_default_ipv4', {}) -%}
+  {%- set os_name = facts.get('ansible_distribution', 'Unknown OS') -%}
+  {%- set os_version = facts.get('ansible_distribution_version', '') -%}
+  {%- set mounts = facts.get('ansible_mounts', []) -%}
+      {%- set root_mount_candidates = mounts | selectattr('mount', '==', '/') | list -%}
+      {%- set root_mount = root_mount_candidates[0] if root_mount_candidates | length > 0 else none -%}
+  {%- set var_mount_candidates = mounts | selectattr('mount', '==', '/var') | list -%}
+  {%- set var_mount = var_mount_candidates[0] if var_mount_candidates | length > 0 else none -%}
+  {%- set boot_mount_candidates = mounts | selectattr('mount', '==', '/boot') | list -%}
+  {%- set boot_mount = boot_mount_candidates[0] if boot_mount_candidates | length > 0 else none -%}
+  {%- set mem_total_mb = facts.get('ansible_memtotal_mb') -%}
+  {%- set cpu_vcpus = facts.get('ansible_processor_vcpus', facts.get('ansible_processor_count')) -%}
+      {%- set running_db_services = namespace(names=[]) -%}
+      {%- set precomputed_services = facts.get('healthcheck_db_services') -%}
+      {%- if precomputed_services is not none %}
+        {%- if precomputed_services is iterable and precomputed_services is not string %}
+          {%- set running_db_services.names = precomputed_services | list -%}
+        {%- elif precomputed_services %}
+          {%- set running_db_services.names = [precomputed_services | string] -%}
+        {%- endif %}
+      {%- endif %}
+      {%- if running_db_services.names | length == 0 %}
+        {%- set services = facts.get('services', facts.get('ansible_facts', {}).get('services', {})) -%}
+        {%- set db_keywords = ['mysql', 'mariadb', 'postgres', 'postgresql', 'pgsql', 'psql', 'postgre', 'mssql', 'sql', 'mongo', 'mongodb', 'redis', 'oracle', 'db2', 'couch', 'cassandra', 'aurora', 'cockroach', 'timescaledb', 'influx', 'sqlite', 'neo4j'] -%}
+        {%- if services %}
+          {%- if services is mapping %}
+            {%- set service_items = services.items() -%}
+          {%- elif services is iterable and services is not string %}
+            {%- set service_items = services -%}
+          {%- else %}
+            {%- set service_items = [] -%}
+          {%- endif %}
+
+          {%- for item in service_items %}
+            {%- if services is mapping %}
+              {%- set svc_name = item[0] -%}
+              {%- set svc_data = item[1] -%}
+            {%- elif item is mapping %}
+              {%- set svc_name = item.name | default(item.get('name', '')) -%}
+              {%- set svc_data = item -%}
+            {%- else %}
+              {%- set svc_name = item | string -%}
+              {%- set svc_data = item -%}
+            {%- endif %}
+
+            {%- set normalized = svc_name | lower -%}
+            {%- if svc_data is mapping %}
+              {%- set state = svc_data.state | default(svc_data.status | default('')) | lower -%}
+            {%- else %}
+              {%- set state = '' -%}
+            {%- endif %}
+            {%- if state and ('running' in state) %}
+              {%- set match = namespace(found=false) -%}
+              {%- for keyword in db_keywords %}
+                {%- if (not match.found) and (keyword in normalized) %}
+                  {%- set display_name = svc_name | replace('.service', '') | replace('.socket', '') | replace('.target', '') -%}
+                  {%- if display_name not in running_db_services.names %}
+                    {%- set _ = running_db_services.names.append(display_name) -%}
+                  {%- endif %}
+                  {%- set match.found = true -%}
+                {%- endif %}
+              {%- endfor %}
+            {%- endif %}
+          {%- endfor %}
+        {%- endif %}
+      {%- endif %}
+
+      {%- set is_db_server = running_db_services.names | length > 0 -%}
+      {%- set hostvar_db_flag = facts.get('healthcheck_is_db_server') -%}
+      {%- if hostvar_db_flag is not none %}
+        {%- set is_db_server = hostvar_db_flag | bool -%}
+      {%- endif %}
+
+  {%- set rendered_hosts.count = rendered_hosts.count + 1 -%}
+
+      <section class="host-card">
+        <h2>{{ facts.get('ansible_hostname', host) }} <small>({{ host }})</small></h2>
+
+        <div class="summary">
+          <span class="summary-badge">{{ os_name }}{% if os_version %} {{ os_version }}{% endif %}</span>
+          <span class="summary-badge">{{ default_ipv4.address | default('IP unavailable') }}</span>
+          <span class="summary-badge">
+            {% if cpu_vcpus is number %}
+              {{ cpu_vcpus }} vCPU
+            {% elif cpu_vcpus %}
+              {{ cpu_vcpus }}
+            {% else %}
+              CPU info unavailable
+            {% endif %}
+          </span>
+          <span class="summary-badge">
+            {% if mem_total_mb is number %}
+              {{ (mem_total_mb / 1024) | float | round(2) }} GB RAM
+            {% else %}
+              Memory info unavailable
+            {% endif %}
+          </span>
+          <span class="summary-badge{% if is_db_server %} summary-badge-success{% endif %}">
+            {% if is_db_server %}
+              Database server
+            {% else %}
+              Non-database server
+            {% endif %}
+          </span>
+          {% if running_db_services.names %}
+            <span class="summary-badge summary-badge-success">
+              Database services: {{ running_db_services.names | join(', ') }}
+            </span>
+          {% endif %}
+        </div>
+
+        <table class="details-table">
+          <tbody>
+            <tr>
+              <th scope="row">Hostname (FQDN)</th>
+              <td>{{ facts.get('ansible_fqdn', 'N/A') }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Domain</th>
+              <td>{{ facts.get('ansible_domain', 'N/A') }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Primary IPv4</th>
+              <td>{{ default_ipv4.address | default('N/A') }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Primary Interface</th>
+              <td>{{ default_ipv4.interface | default('N/A') }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Operating System</th>
+              <td>
+                {{ os_name }}{% if os_version %} {{ os_version }}{% endif %}
+                {% set distro_release = facts.get('ansible_distribution_release') %}
+                {% if distro_release %}
+                  ({{ distro_release }})
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Kernel</th>
+              <td>{{ facts.get('ansible_kernel', 'N/A') }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Architecture</th>
+              <td>{{ facts.get('ansible_architecture', 'N/A') }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Database Role</th>
+              <td>
+                {% if is_db_server %}
+                  Database server{% if running_db_services.names %} ({{ running_db_services.names | join(', ') }}){% endif %}
+                {% else %}
+                  Non-database workload
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Root Disk Total</th>
+              <td>
+                {% if root_mount is not none and root_mount.size_total is defined %}
+                  {{ (root_mount.size_total / 1024 / 1024 / 1024) | float | round(2) }} GB
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Root Disk Free</th>
+              <td>
+                {% if root_mount is not none and root_mount.size_available is defined %}
+                  {{ (root_mount.size_available / 1024 / 1024 / 1024) | float | round(2) }} GB
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">/var Free Space</th>
+              <td>
+                {% if var_mount is not none and var_mount.size_available is defined %}
+                  {% set var_free_gib = (var_mount.size_available / 1024 / 1024 / 1024) | float %}
+                  {% set var_status_class = 'status-ok' if var_free_gib >= 1 else 'status-critical' %}
+                  <span class="status-pill {{ var_status_class }}">
+                    {{ var_free_gib | round(2) }} GiB
+                  </span>
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">/boot Free Space</th>
+              <td>
+                {% if boot_mount is not none and boot_mount.size_available is defined %}
+                  {% set boot_free_mb = (boot_mount.size_available / 1024 / 1024) | float %}
+                  {% set boot_status_class = 'status-ok' if boot_free_mb >= 80 else 'status-critical' %}
+                  <span class="status-pill {{ boot_status_class }}">
+                    {{ boot_free_mb | round(1) }} MB
+                  </span>
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Uptime</th>
+              <td>
+                {% set uptime_seconds = facts.get('ansible_uptime_seconds') %}
+                {% if uptime_seconds is number %}
+                  {{ (uptime_seconds / 3600) | float | round(2) }} hours
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+  {%- endfor %}
+
+    {%- if rendered_hosts.count == 0 %}
+      <section class="host-card">
+        <h2>No matching hosts</h2>
+        <p>
+          {% if host_type_filter in ['database_servers', 'database', 'db_servers', 'db'] %}
+            No database servers were detected based on running services.
+          {% elif host_type_filter in ['application_servers', 'application', 'app_servers', 'non_database'] %}
+            No application servers were detected (all hosts appear to be database servers).
+          {% else %}
+            No hosts were available in the selected inventory.
+          {% endif %}
+        </p>
+      </section>
+    {%- endif %}
+
+    {%- set failed_nodes = groups['healthcheck_failed_nodes'] | default([]) -%}
+    {%- if failed_nodes | length > 0 %}
+      <section class="host-card" style="border-left: 4px solid #ef4444;">
+        <h2 style="color: #dc2626;">⚠️ Unreachable or Failed Hosts ({{ failed_nodes | length }})</h2>
+        <p style="margin-bottom: 1.5rem; color: #991b1b;">The following hosts could not be reached or failed during health checks:</p>
+        
+        <table class="details-table">
+          <tbody>
+            {%- for host in failed_nodes | sort %}
+              {%- set facts = hostvars[host] -%}
+              {%- set error_msg = facts.get('healthcheck_error_message', 'Host unreachable - SSH connection failed or timeout') -%}
+              <tr>
+                <th scope="row" style="color: #dc2626;">{{ host }}</th>
+                <td style="color: #991b1b;">{{ error_msg }}</td>
+              </tr>
+            {%- endfor %}
+          </tbody>
+        </table>
+      </section>
+    {%- endif %}
+  </div>
+</body>
+</html>
